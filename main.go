@@ -29,10 +29,14 @@ func main() {
 		log.Fatalln("Error: HOOKBOT_KEY or HOOKBOT_GITHUB_SECRET not set")
 	}
 
-	handler := NewHookbot(key, github_secret)
+	hookbot := NewHookbot(key, github_secret)
+	http.Handle("/", hookbot)
+	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "OK")
+	})
 
 	log.Println("Listening on", *addr)
-	err := http.ListenAndServe(*addr, handler)
+	err := http.ListenAndServe(*addr, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
