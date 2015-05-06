@@ -125,7 +125,7 @@ func (h *Hookbot) IsGithubKeyOK(w http.ResponseWriter, r *http.Request) bool {
 
 	r.Body = ioutil.NopCloser(bytes.NewReader(body))
 
-	mac := hmac.New(sha1.New, []byte(h.key))
+	mac := hmac.New(sha1.New, []byte(h.github_secret))
 	mac.Reset()
 	mac.Write(body)
 
@@ -137,7 +137,11 @@ func (h *Hookbot) IsGithubKeyOK(w http.ResponseWriter, r *http.Request) bool {
 func (h *Hookbot) IsKeyOK(w http.ResponseWriter, r *http.Request) bool {
 
 	if _, ok := r.Header["X-Hub-Signature"]; ok {
-		return h.IsGithubKeyOK(w, r)
+		if !h.IsGithubKeyOK(w, r) {
+			http.NotFound(w, r)
+			return false
+		}
+		return true
 	}
 
 	lhs := r.Header.Get("Authorization")
