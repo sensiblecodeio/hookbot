@@ -1,27 +1,35 @@
 package main
 
 import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha1"
+	"crypto/subtle"
 	"flag"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
-	"github.com/gorilla/websocket"
+	"golang.org/x/net/websocket"
 )
 
 func main() {
 	var (
-		addr = flag.String("addr", ":8080", "address to listen on")
-		key  = os.Getenv("HOOKBOT_KEY")
+		addr          = flag.String("addr", ":8080", "address to listen on")
+		key           = os.Getenv("HOOKBOT_KEY")
+		github_secret = os.Getenv("HOOKBOT_GITHUB_SECRET")
 	)
 	flag.Parse()
 
-	if key == "" {
-		log.Fatalln("Error: HOOKBOT_KEY not set")
+	if key == "" || github_secret == "" {
+		log.Fatalln("Error: HOOKBOT_KEY or HOOKBOT_GITHUB_SECRET not set")
 	}
 
-	handler := NewHookbot(key)
+	handler := NewHookbot(key, github_secret)
 
 	log.Println("Listening on", *addr)
 	err := http.ListenAndServe(*addr, handler)
@@ -31,31 +39,43 @@ func main() {
 }
 
 type Hookbot struct {
-	key string
+	key, github_secret string
 
-	*http.ServeMux
+	http.Handler
 
 	message                  chan []byte
 	addListener, delListener chan chan []byte
 }
 
-func NewHookbot(key string) *Hookbot {
+func NewHookbot(key, github_secret string) *Hookbot {
 	h := &Hookbot{
-		key: key,
+		key: key, github_secret: github_secret,
 
-		ServeMux: http.NewServeMux(),
-
-		message:     make(chan []byte, 10),
-		addListener: make(chan chan []byte, 10),
-		delListener: make(chan chan []byte, 10),
+		message:     make(chan []byte, 1),
+		addListener: make(chan chan []byte, 1),
+		delListener: make(chan chan []byte, 1),
 	}
 
-	h.HandleFunc("/watch/", h.ServeWatch)
-	h.HandleFunc("/notify/", h.ServeNotify)
+	mux := http.NewServeMux()
+	mux.Handle("/watch/", websocket.Handler(h.ServeWatch))
+	mux.HandleFunc("/notify/", h.ServeNotify)
+
+	// Middlewares
+	h.Handler = mux
+	h.Handler = h.KeyChecker(h.Handler)
 
 	go h.Loop()
 
 	return h
+}
+
+var timeout = 1 * time.Second
+
+func TimeoutSend(c chan []byte, m []byte) {
+	select {
+	case c <- m:
+	case <-time.After(timeout):
+	}
 }
 
 // Manage fanout from h.message onto listeners
@@ -65,7 +85,7 @@ func (h *Hookbot) Loop() {
 		select {
 		case m := <-h.message:
 			for listener := range listeners {
-				listener <- m
+				go TimeoutSend(listener, m)
 			}
 
 		case l := <-h.addListener:
@@ -86,18 +106,58 @@ func (h *Hookbot) Del(c chan []byte) {
 	h.delListener <- c
 }
 
-func (h *Hookbot) BadKey(route string, w http.ResponseWriter, r *http.Request) bool {
-	if r.URL.Path == route+h.key {
+func SecureEqual(x, y string) bool {
+	if subtle.ConstantTimeCompare([]byte(x), []byte(y)) == 1 {
+		return true
+	}
+	return false
+}
+
+func (h *Hookbot) IsGithubKeyOK(w http.ResponseWriter, r *http.Request) bool {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Not Authorized", http.StatusUnauthorized)
+	}
+
+	r.Body = ioutil.NopCloser(bytes.NewReader(body))
+
+	mac := hmac.New(sha1.New, []byte(h.key))
+	mac.Reset()
+	mac.Write(body)
+
+	signature := fmt.Sprintf("sha1=%x", mac.Sum(nil))
+
+	return SecureEqual(r.Header.Get("X-Hub-Signature"), signature)
+}
+
+func (h *Hookbot) IsKeyOK(w http.ResponseWriter, r *http.Request) bool {
+
+	if _, ok := r.Header["X-Hub-Signature"]; ok {
+		return h.IsGithubKeyOK(w, r)
+	}
+
+	lhs := r.Header.Get("Authorization")
+	rhs := fmt.Sprintf("Bearer %v", h.key)
+
+	if !SecureEqual(lhs, rhs) {
+		http.NotFound(w, r)
 		return false
 	}
-	http.NotFound(w, r)
+
 	return true
 }
 
-func (h *Hookbot) ServeNotify(w http.ResponseWriter, r *http.Request) {
-	if h.BadKey("/notify/", w, r) {
-		return
+func (h *Hookbot) KeyChecker(wrapped http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !h.IsKeyOK(w, r) {
+			return
+		}
+
+		wrapped.ServeHTTP(w, r)
 	}
+}
+
+func (h *Hookbot) ServeNotify(w http.ResponseWriter, r *http.Request) {
 	message, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("Error serving %v: %v", r.URL, err)
@@ -106,49 +166,39 @@ func (h *Hookbot) ServeNotify(w http.ResponseWriter, r *http.Request) {
 	h.message <- message
 }
 
-var upgrader = websocket.Upgrader{}
+func (h *Hookbot) ServeWatch(conn *websocket.Conn) {
 
-func (h *Hookbot) ServeWatch(w http.ResponseWriter, r *http.Request) {
-	if h.BadKey("/watch/", w, r) {
-		return
-	}
-
-	c := h.Add()
-	defer h.Del(c)
-
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println("Error upgrading connection:", err)
-		return
-	}
+	notifications := h.Add()
+	defer h.Del(notifications)
 
 	closed := make(chan struct{})
 
 	go func() {
 		defer close(closed)
-
-		// Read loop is required
-		for {
-			if _, _, err := conn.NextReader(); err != nil {
-				conn.Close()
-				break
-			}
-		}
+		_, _ = io.Copy(ioutil.Discard, conn)
 	}()
 
+	var message []byte
+
 	for {
-		var m []byte
 		select {
-		case m = <-c:
+		case message = <-notifications:
 		case <-closed:
-			log.Println("Client disconnected")
+			log.Printf("Client disconnected")
 			return
 		}
-		err := conn.WriteMessage(websocket.TextMessage, m)
-		if err != nil {
-			log.Println("Error in writemessage:", err)
-			break
+
+		conn.SetWriteDeadline(time.Now().Add(90 * time.Second))
+		n, err := conn.Write(message)
+		switch {
+		case n != len(message):
+			log.Printf("Short write %d != %d", n, len(message))
+			return // short write
+		case err == io.EOF:
+			return // done
+		case err != nil:
+			log.Printf("Error in conn.Write: %v", err)
+			return // unknown error
 		}
 	}
-
 }
