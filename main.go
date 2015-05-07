@@ -23,22 +23,42 @@ import (
 
 func main() {
 	app := cli.NewApp()
+	app.Name = "hookbot"
 	app.Usage = "turn webhooks into websockets"
 
-	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name:  "bind, b",
-			Value: ":8080",
-			Usage: "address to listen on",
+	app.Commands = []cli.Command{
+		{
+			Name:   "serve",
+			Usage:  "start a hookbot instance, listening on http",
+			Action: ActionServe,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "bind, b",
+					Value: ":8080",
+					Usage: "address to listen on",
+				},
+			},
+		},
+		{
+			Name:  "make-token",
+			Usage: "given a URI, generate a token",
+			Action: func(c *cli.Context) {
+				key, _ := MustGetKeysFromEnv()
+				if len(c.Args()) != 1 {
+					cli.ShowSubcommandHelp(c)
+					os.Exit(1)
+				}
+
+				url := c.Args().First()
+				fmt.Println(Sha1HMAC(key, url))
+			},
 		},
 	}
-
-	app.Action = ActionMain
 
 	app.RunAndExitOnError()
 }
 
-func ActionMain(c *cli.Context) {
+func MustGetKeysFromEnv() (string, string) {
 	var (
 		key           = os.Getenv("HOOKBOT_KEY")
 		github_secret = os.Getenv("HOOKBOT_GITHUB_SECRET")
@@ -47,6 +67,12 @@ func ActionMain(c *cli.Context) {
 	if key == "" || github_secret == "" {
 		log.Fatalln("Error: HOOKBOT_KEY or HOOKBOT_GITHUB_SECRET not set")
 	}
+
+	return key, github_secret
+}
+
+func ActionServe(c *cli.Context) {
+	key, github_secret := MustGetKeysFromEnv()
 
 	hookbot := NewHookbot(key, github_secret)
 	http.Handle("/", hookbot)
@@ -156,7 +182,7 @@ func (h *Hookbot) IsGithubKeyOK(w http.ResponseWriter, r *http.Request) bool {
 
 	r.Body = ioutil.NopCloser(bytes.NewReader(body))
 
-	expected := fmt.Sprintf("sha1=%v", Sha1HMAC(h.github_secret, body))
+	expected := fmt.Sprintf("sha1=%v", Sha1HMAC(h.github_secret, string(body)))
 
 	return SecureEqual(r.Header.Get("X-Hub-Signature"), expected)
 }
@@ -243,6 +269,7 @@ func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 
 	topic := Topic(r.URL)
 	h.message <- Message{Topic: topic, Body: body}
+	fmt.Fprintln(w, "OK")
 }
 
 func (h *Hookbot) ServeSubscribe(conn *websocket.Conn) {
