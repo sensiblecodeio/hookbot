@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -59,12 +60,12 @@ func ActionMain(c *cli.Context) {
 }
 
 type Message struct {
-	Suffix string
+	Topic string
 	Body   []byte
 }
 
 type Listener struct {
-	Suffix string
+	Topic string
 	c      chan []byte
 }
 
@@ -115,7 +116,7 @@ func (h *Hookbot) Loop() {
 		select {
 		case m := <-h.message:
 			for listener := range listeners {
-				if listener.Suffix == m.Suffix {
+				if listener.Topic == m.Topic {
 					go TimeoutSend(listener.c, m.Body)
 				}
 			}
@@ -128,8 +129,8 @@ func (h *Hookbot) Loop() {
 	}
 }
 
-func (h *Hookbot) Add(suffix string) Listener {
-	l := Listener{Suffix: suffix, c: make(chan []byte)}
+func (h *Hookbot) Add(topic string) Listener {
+	l := Listener{Topic: topic, c: make(chan []byte)}
 	h.addListener <- l
 	return l
 }
@@ -193,6 +194,13 @@ func (h *Hookbot) KeyChecker(wrapped http.Handler) http.HandlerFunc {
 	}
 }
 
+func Topic(url *url.URL) string {
+	// The topic is everything after the "/pub/" or "/sub/"
+	p := strings.SplitN(url.Path, "/", 3)
+	topic := p[2]
+        return topic
+}
+
 func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(r.Body)
 
@@ -201,23 +209,15 @@ func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url := r.URL
-	// The suffix is everything after the "/notify/"
-	p := strings.SplitN(url.Path, "/", 3)
-	suffix := p[2]
-	log.Printf("suffix: [[[%v]]]", suffix)
-
-	h.message <- Message{Suffix: suffix, Body: body}
+	topic := Topic(r.URL)
+	h.message <- Message{Topic: topic, Body: body}
 }
 
 func (h *Hookbot) ServeSubscribe(conn *websocket.Conn) {
 
-	url := conn.Request().URL
-	p := strings.SplitN(url.Path, "/", 3)
-	suffix := p[2]
-	log.Printf("websocket suffix: [[[%v]]]", suffix)
+	topic := Topic(conn.Request().URL)
 
-	listener := h.Add(suffix)
+	listener := h.Add(topic)
 	defer h.Del(listener)
 
 	closed := make(chan struct{})
