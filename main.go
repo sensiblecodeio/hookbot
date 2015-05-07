@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/codegangsta/cli"
-	"golang.org/x/net/websocket"
+	"github.com/gorilla/websocket"
 )
 
 func main() {
@@ -124,7 +124,7 @@ func NewHookbot(key, github_secret string) *Hookbot {
 		delListener: make(chan Listener, 1),
 	}
 
-	sub := websocket.Handler(h.ServeSubscribe)
+	sub := WebsocketHandlerFunc(h.ServeSubscribe)
 	pub := http.HandlerFunc(h.ServePublish)
 
 	mux := http.NewServeMux()
@@ -377,9 +377,9 @@ func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 	<-done
 }
 
-func (h *Hookbot) ServeSubscribe(conn *websocket.Conn) {
+func (h *Hookbot) ServeSubscribe(conn *websocket.Conn, r *http.Request) {
 
-	topic := Topic(conn.Request())
+	topic := Topic(r)
 
 	listener := h.Add(topic)
 	defer h.Del(listener)
@@ -388,7 +388,12 @@ func (h *Hookbot) ServeSubscribe(conn *websocket.Conn) {
 
 	go func() {
 		defer close(closed)
-		_, _ = io.Copy(ioutil.Discard, conn)
+		for {
+			if _, _, err := conn.NextReader(); err != nil {
+				conn.Close()
+				return
+			}
+		}
 	}()
 
 	var message []byte
@@ -402,15 +407,12 @@ func (h *Hookbot) ServeSubscribe(conn *websocket.Conn) {
 		}
 
 		conn.SetWriteDeadline(time.Now().Add(90 * time.Second))
-		n, err := conn.Write(message)
+		err := conn.WriteMessage(websocket.BinaryMessage, message)
 		switch {
-		case n != len(message):
-			log.Printf("Short write %d != %d", n, len(message))
-			return // short write
 		case err == io.EOF:
 			return // done
 		case err != nil:
-			log.Printf("Error in conn.Write: %v", err)
+			log.Printf("Error in conn.WriteMessage: %v", err)
 			return // unknown error
 		}
 	}

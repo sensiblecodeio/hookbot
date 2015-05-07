@@ -166,34 +166,19 @@ func TestUnsafeSubWithHeader(t *testing.T) {
 		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
 		defer hookbot.Shutdown()
 
-		// TODO(pwaller): This is hideous, but I hope much of it will
-		// evaporate when we switch from x/net/websocket to gorilla/websocket.
-		func() {
-			defer func() {
-				err := recover()
-				if err == nil {
-					t.Fatal("This should panic from x/net/websocket")
-				}
-				switch err := err.(type) {
-				case string:
-					if err != "Hijack failed: cannot hijack ResponseRecorder" {
-						t.Fatal("Unexpected condition.")
-					}
-				default:
-					t.Logf("Panic: %T %#+v", err, err)
-				}
-			}()
-			hookbot.ServeHTTP(wHijack, r)
-		}()
+		hookbot.ServeHTTP(wHijack, r)
 	}()
 
-	// Currently it's okay
-	if w.Code != http.StatusOK {
-		t.Errorf("Status code != 200 (= %v)", w.Code)
+	// This is pinned according to how gorilla/websocket responds when given
+	// a non-websocket connection. That's because we made it through any layers
+	// of authentication/protection and tried to initiate a websocket
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Status code != 400 (= %v)", w.Code)
 	}
 
+	// Again, this is just how gorilla/websocket responds.
 	response := string(w.Body.Bytes())
-	if response != "" {
+	if response != "Bad Request\n" {
 		t.Errorf("Response body incorrect, got: %q", response)
 	}
 }
