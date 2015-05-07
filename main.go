@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/subtle"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/codegangsta/cli"
@@ -154,30 +156,55 @@ func (h *Hookbot) IsGithubKeyOK(w http.ResponseWriter, r *http.Request) bool {
 
 	r.Body = ioutil.NopCloser(bytes.NewReader(body))
 
-	mac := hmac.New(sha1.New, []byte(h.github_secret))
-	mac.Reset()
-	mac.Write(body)
+	expected := fmt.Sprintf("sha1=%v", Sha1HMAC(h.github_secret, body))
 
-	signature := fmt.Sprintf("sha1=%x", mac.Sum(nil))
+	return SecureEqual(r.Header.Get("X-Hub-Signature"), expected)
+}
 
-	return SecureEqual(r.Header.Get("X-Hub-Signature"), signature)
+func Sha1HMAC(key, payload string) string {
+	mac := hmac.New(sha1.New, []byte(key))
+	_, _ = mac.Write([]byte(payload))
+	return fmt.Sprintf("%x", mac.Sum(nil))
 }
 
 func (h *Hookbot) IsKeyOK(w http.ResponseWriter, r *http.Request) bool {
 
 	if _, ok := r.Header["X-Hub-Signature"]; ok {
 		if !h.IsGithubKeyOK(w, r) {
-			http.NotFound(w, r)
 			return false
 		}
 		return true
 	}
 
-	lhs := r.Header.Get("Authorization")
-	rhs := fmt.Sprintf("Bearer %v", h.key)
+	authorization := r.Header.Get("Authorization")
+	fields := strings.Fields(authorization)
 
-	if !SecureEqual(lhs, rhs) {
-		http.NotFound(w, r)
+	if len(fields) != 2 {
+		return false
+	}
+
+	authType, givenKey := fields[0], fields[1]
+
+	var givenMac string
+
+	switch strings.ToLower(authType) {
+	default:
+		return false // Not understood
+	case "basic":
+		givenMacBytes, err := base64.StdEncoding.DecodeString(givenKey)
+		if err != nil {
+			return false
+		}
+		// Remove trailing right colon, since it should be blank.
+		givenMac = strings.TrimRight(string(givenMacBytes), ":")
+
+	case "bearer":
+		givenMac = givenKey // No processing required
+	}
+
+	expectedMac := Sha1HMAC(h.key, r.URL.Path)
+
+	if !SecureEqual(givenMac, expectedMac) {
 		return false
 	}
 
@@ -187,6 +214,7 @@ func (h *Hookbot) IsKeyOK(w http.ResponseWriter, r *http.Request) bool {
 func (h *Hookbot) KeyChecker(wrapped http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !h.IsKeyOK(w, r) {
+			http.NotFound(w, r)
 			return
 		}
 
