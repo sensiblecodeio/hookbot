@@ -6,7 +6,7 @@ RUN go get \
 		github.com/pwaller/goupx \
 		github.com/codegangsta/cli \
 		github.com/skelterjohn/rerun \
-		golang.org/x/net/websocket
+		github.com/gorilla/websocket
 
 # Turn off cgo so that we end up with totally static binaries
 ENV CGO_ENABLED 0
