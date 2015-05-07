@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/subtle"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -14,16 +13,32 @@ import (
 	"os"
 	"time"
 
+	"github.com/codegangsta/cli"
 	"golang.org/x/net/websocket"
 )
 
 func main() {
+	app := cli.NewApp()
+	app.Usage = "turn webhooks into websockets"
+
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "bind, b",
+			Value: ":8080",
+			Usage: "address to listen on",
+		},
+	}
+
+	app.Action = ActionMain
+
+	app.RunAndExitOnError()
+}
+
+func ActionMain(c *cli.Context) {
 	var (
-		addr          = flag.String("addr", ":8080", "address to listen on")
 		key           = os.Getenv("HOOKBOT_KEY")
 		github_secret = os.Getenv("HOOKBOT_GITHUB_SECRET")
 	)
-	flag.Parse()
 
 	if key == "" || github_secret == "" {
 		log.Fatalln("Error: HOOKBOT_KEY or HOOKBOT_GITHUB_SECRET not set")
@@ -35,8 +50,8 @@ func main() {
 		fmt.Fprintln(w, "OK")
 	})
 
-	log.Println("Listening on", *addr)
-	err := http.ListenAndServe(*addr, nil)
+	log.Println("Listening on", c.String("bind"))
+	err := http.ListenAndServe(c.String("bind"), nil)
 	if err != nil {
 		log.Fatal(err)
 	}
