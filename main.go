@@ -76,8 +76,8 @@ func NewHookbot(key, github_secret string) *Hookbot {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/watch/", websocket.Handler(h.ServeWatch))
-	mux.HandleFunc("/notify/", h.ServeNotify)
+	mux.Handle("/sub/", websocket.Handler(h.ServeSubscribe))
+	mux.HandleFunc("/pub/", h.ServePublish)
 
 	// Middlewares
 	h.Handler = mux
@@ -180,7 +180,7 @@ func (h *Hookbot) KeyChecker(wrapped http.Handler) http.HandlerFunc {
 	}
 }
 
-func (h *Hookbot) ServeNotify(w http.ResponseWriter, r *http.Request) {
+func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 	message, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("Error serving %v: %v", r.URL, err)
@@ -189,7 +189,7 @@ func (h *Hookbot) ServeNotify(w http.ResponseWriter, r *http.Request) {
 	h.message <- message
 }
 
-func (h *Hookbot) ServeWatch(conn *websocket.Conn) {
+func (h *Hookbot) ServeSubscribe(conn *websocket.Conn) {
 
 	notifications := h.Add()
 	defer h.Del(notifications)
