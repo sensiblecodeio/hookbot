@@ -10,7 +10,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/codegangsta/cli"
@@ -57,22 +59,32 @@ func ActionMain(c *cli.Context) {
 	}
 }
 
+type Message struct {
+	Topic string
+	Body  []byte
+}
+
+type Listener struct {
+	Topic string
+	c     chan []byte
+}
+
 type Hookbot struct {
 	key, github_secret string
 
 	http.Handler
 
-	message                  chan []byte
-	addListener, delListener chan chan []byte
+	message                  chan Message
+	addListener, delListener chan Listener
 }
 
 func NewHookbot(key, github_secret string) *Hookbot {
 	h := &Hookbot{
 		key: key, github_secret: github_secret,
 
-		message:     make(chan []byte, 1),
-		addListener: make(chan chan []byte, 1),
-		delListener: make(chan chan []byte, 1),
+		message:     make(chan Message, 1),
+		addListener: make(chan Listener, 1),
+		delListener: make(chan Listener, 1),
 	}
 
 	mux := http.NewServeMux()
@@ -99,12 +111,14 @@ func TimeoutSend(c chan []byte, m []byte) {
 
 // Manage fanout from h.message onto listeners
 func (h *Hookbot) Loop() {
-	listeners := map[chan []byte]struct{}{}
+	listeners := map[Listener]struct{}{}
 	for {
 		select {
 		case m := <-h.message:
 			for listener := range listeners {
-				go TimeoutSend(listener, m)
+				if listener.Topic == m.Topic {
+					go TimeoutSend(listener.c, m.Body)
+				}
 			}
 
 		case l := <-h.addListener:
@@ -115,14 +129,14 @@ func (h *Hookbot) Loop() {
 	}
 }
 
-func (h *Hookbot) Add() chan []byte {
-	c := make(chan []byte)
-	h.addListener <- c
-	return c
+func (h *Hookbot) Add(topic string) Listener {
+	l := Listener{Topic: topic, c: make(chan []byte)}
+	h.addListener <- l
+	return l
 }
 
-func (h *Hookbot) Del(c chan []byte) {
-	h.delListener <- c
+func (h *Hookbot) Del(l Listener) {
+	h.delListener <- l
 }
 
 func SecureEqual(x, y string) bool {
@@ -180,19 +194,35 @@ func (h *Hookbot) KeyChecker(wrapped http.Handler) http.HandlerFunc {
 	}
 }
 
+// The topic is everything after the "/pub/" or "/sub/"
+var TopicRE *regexp.Regexp = regexp.MustCompile("/[^/]+/(.*)")
+
+func Topic(url *url.URL) string {
+	m := TopicRE.FindStringSubmatch(url.Path)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
 func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
-	message, err := ioutil.ReadAll(r.Body)
+	body, err := ioutil.ReadAll(r.Body)
+
 	if err != nil {
 		log.Printf("Error serving %v: %v", r.URL, err)
 		return
 	}
-	h.message <- message
+
+	topic := Topic(r.URL)
+	h.message <- Message{Topic: topic, Body: body}
 }
 
 func (h *Hookbot) ServeSubscribe(conn *websocket.Conn) {
 
-	notifications := h.Add()
-	defer h.Del(notifications)
+	topic := Topic(conn.Request().URL)
+
+	listener := h.Add(topic)
+	defer h.Del(listener)
 
 	closed := make(chan struct{})
 
@@ -205,7 +235,7 @@ func (h *Hookbot) ServeSubscribe(conn *websocket.Conn) {
 
 	for {
 		select {
-		case message = <-notifications:
+		case message = <-listener.c:
 		case <-closed:
 			log.Printf("Client disconnected")
 			return
