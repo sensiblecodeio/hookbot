@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
+	"regexp"
 	"time"
 
 	"github.com/codegangsta/cli"
@@ -194,11 +194,15 @@ func (h *Hookbot) KeyChecker(wrapped http.Handler) http.HandlerFunc {
 	}
 }
 
+// The topic is everything after the "/pub/" or "/sub/"
+var TopicRE *regexp.Regexp = regexp.MustCompile("/[^/]+/(.*)")
+
 func Topic(url *url.URL) string {
-	// The topic is everything after the "/pub/" or "/sub/"
-	p := strings.SplitN(url.Path, "/", 3)
-	topic := p[2]
-        return topic
+	m := TopicRE.FindStringSubmatch(url.Path)
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }
 
 func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
