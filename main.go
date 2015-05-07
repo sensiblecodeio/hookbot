@@ -15,6 +15,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/codegangsta/cli"
@@ -90,6 +91,8 @@ func ActionServe(c *cli.Context) {
 type Message struct {
 	Topic string
 	Body  []byte
+	Done  chan struct{} // signalled when messages have been strobed
+	// (this is not the same as when they have been received)
 }
 
 type Listener struct {
@@ -100,6 +103,9 @@ type Listener struct {
 type Hookbot struct {
 	key, github_secret string
 
+	wg       *sync.WaitGroup
+	shutdown chan struct{}
+
 	http.Handler
 
 	message                  chan Message
@@ -109,6 +115,9 @@ type Hookbot struct {
 func NewHookbot(key, github_secret string) *Hookbot {
 	h := &Hookbot{
 		key: key, github_secret: github_secret,
+
+		wg:       &sync.WaitGroup{},
+		shutdown: make(chan struct{}),
 
 		message:     make(chan Message, 1),
 		addListener: make(chan Listener, 1),
@@ -123,6 +132,7 @@ func NewHookbot(key, github_secret string) *Hookbot {
 	h.Handler = mux
 	h.Handler = h.KeyChecker(h.Handler)
 
+	h.wg.Add(1)
 	go h.Loop()
 
 	return h
@@ -130,35 +140,53 @@ func NewHookbot(key, github_secret string) *Hookbot {
 
 var timeout = 1 * time.Second
 
-func TimeoutSend(c chan []byte, m []byte) {
+func TimeoutSend(wg *sync.WaitGroup, c chan []byte, m []byte) {
+	defer wg.Done()
+
 	select {
 	case c <- m:
 	case <-time.After(timeout):
 	}
 }
 
+// Shut down main loop and wait for all in-flight messages to send or timeout
+func (h *Hookbot) Shutdown() {
+	close(h.shutdown)
+	h.wg.Wait()
+}
+
 // Manage fanout from h.message onto listeners
 func (h *Hookbot) Loop() {
+	defer h.wg.Done()
+
 	listeners := map[Listener]struct{}{}
+
 	for {
 		select {
 		case m := <-h.message:
+
+			// Strobe all interested listeners
 			for listener := range listeners {
 				if listener.Topic == m.Topic {
-					go TimeoutSend(listener.c, m.Body)
+					h.wg.Add(1)
+					go TimeoutSend(h.wg, listener.c, m.Body)
 				}
 			}
+
+			close(m.Done)
 
 		case l := <-h.addListener:
 			listeners[l] = struct{}{}
 		case l := <-h.delListener:
 			delete(listeners, l)
+		case <-h.shutdown:
+			return
 		}
 	}
 }
 
 func (h *Hookbot) Add(topic string) Listener {
-	l := Listener{Topic: topic, c: make(chan []byte)}
+	l := Listener{Topic: topic, c: make(chan []byte, 1)}
 	h.addListener <- l
 	return l
 }
