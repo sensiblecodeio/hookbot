@@ -97,6 +97,7 @@ type Message struct {
 type Listener struct {
 	Topic string
 	c     chan []byte
+	ready chan struct{} // closed when c is subscribed
 }
 
 type Hookbot struct {
@@ -184,6 +185,7 @@ func (h *Hookbot) Loop() {
 
 		case l := <-h.addListener:
 			listeners[l] = struct{}{}
+			close(l.ready)
 		case l := <-h.delListener:
 			delete(listeners, l)
 		case <-h.shutdown:
@@ -193,8 +195,14 @@ func (h *Hookbot) Loop() {
 }
 
 func (h *Hookbot) Add(topic string) Listener {
-	l := Listener{Topic: topic, c: make(chan []byte, 1)}
+	ready := make(chan struct{})
+	l := Listener{
+		Topic: topic,
+		c:     make(chan []byte, 1),
+		ready: ready,
+	}
 	h.addListener <- l
+	<-ready // wait until "c" in the subscribed map, for testing.
 	return l
 }
 
