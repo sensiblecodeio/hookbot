@@ -9,27 +9,35 @@ import (
 
 // Unsafe pub should always succeed, without credentials
 func TestUnsafePub(t *testing.T) {
-	hookbot := NewHookbot("key", "github_secret")
 
-	msgs := hookbot.Add("/unsafe/")
-	defer hookbot.Del(msgs)
+	run := func(iteration int) {
+		hookbot := NewHookbot("key", "github_secret")
 
-	w := httptest.NewRecorder()
+		msgs := hookbot.Add("/unsafe/")
+		defer hookbot.Del(msgs)
 
-	body := bytes.NewReader([]byte("MESSAGE"))
-	r, _ := http.NewRequest("POST", "http://localhost/unsafe/pub/", body)
+		w := httptest.NewRecorder()
 
-	hookbot.ServeHTTP(w, r)
+		body := bytes.NewReader([]byte("MESSAGE"))
+		r, _ := http.NewRequest("POST", "http://localhost/unsafe/pub/", body)
 
-	hookbot.Shutdown()
+		hookbot.ServeHTTP(w, r)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Status code != 200 (= %v)", w.Code)
+		hookbot.Shutdown()
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Status code != 200 (= %v)", w.Code)
+		}
+
+		select {
+		case <-msgs.c:
+		default:
+			t.Fatalf("Message not delivered (iteration %v)", iteration)
+		}
 	}
 
-	select {
-	case <-msgs.c:
-	default:
-		t.Error("Message not delivered")
+	// Run the test repeatedly to search for races
+	for i := 0; i < 10; i++ {
+		run(i)
 	}
 }
