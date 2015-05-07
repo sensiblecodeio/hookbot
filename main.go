@@ -61,12 +61,12 @@ func ActionMain(c *cli.Context) {
 
 type Message struct {
 	Topic string
-	Body   []byte
+	Body  []byte
 }
 
 type Listener struct {
 	Topic string
-	c      chan []byte
+	c     chan []byte
 }
 
 type Hookbot struct {
