@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,11 +15,65 @@ const (
 	TEST_KEY           = "key"
 )
 
-func MakePubRequest(url, body string) (w *httptest.ResponseRecorder, r *http.Request) {
+func MakeRequest(method, url, body string) (w *httptest.ResponseRecorder, r *http.Request) {
 	w = httptest.NewRecorder()
 	bodyReader := bytes.NewReader([]byte(body))
-	r, _ = http.NewRequest("POST", "http://localhost"+url, bodyReader)
+	r, _ = http.NewRequest(method, "http://localhost"+url, bodyReader)
 	return w, r
+}
+
+// Bad authentication should cause a 404 not found.
+func TestAuthMissingFail(t *testing.T) {
+	w, r := MakeRequest("POST", "/pub/", "MESSAGE")
+
+	func() {
+		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
+		defer hookbot.Shutdown()
+
+		hookbot.ServeHTTP(w, r)
+	}()
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Status code != 404 (= %v)", w.Code)
+	}
+}
+
+// Invalid secret authentication should return 404 Not Found.
+func TestAuthInvalidSecret(t *testing.T) {
+	w, r := MakeRequest("POST", "/pub/", "MESSAGE")
+
+	token := Sha1HMAC(TEST_KEY, "/pub/not/the/same/as/above") // bad secret
+	r.SetBasicAuth(token, "")
+
+	func() {
+		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
+		defer hookbot.Shutdown()
+
+		hookbot.ServeHTTP(w, r)
+	}()
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Status code != 404 (= %v)", w.Code)
+	}
+}
+
+// Valid secret authentication should return 200 OK
+func TestAuthSuccess(t *testing.T) {
+	w, r := MakeRequest("POST", "/pub/place", "MESSAGE")
+
+	token := Sha1HMAC(TEST_KEY, "/pub/place")
+	r.SetBasicAuth(token, "")
+
+	func() {
+		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
+		defer hookbot.Shutdown()
+
+		hookbot.ServeHTTP(w, r)
+	}()
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status code != 200 (= %v)", w.Code)
+	}
 }
 
 // Unsafe pub should always succeed, without credentials
@@ -24,7 +81,7 @@ func TestUnsafePub(t *testing.T) {
 
 	run := func(iteration int) {
 
-		w, r := MakePubRequest("/unsafe/pub/", "MESSAGE")
+		w, r := MakeRequest("POST", "/unsafe/pub/", "MESSAGE")
 
 		var c chan []byte
 
@@ -53,14 +110,17 @@ func TestUnsafePub(t *testing.T) {
 	}
 
 	// Run the test repeatedly to search for races.
+	// (I was hitting them ~1 per few before.)
 	for i := 0; i < 10; i++ {
 		run(i)
 	}
 }
 
-// Bad authentication should cause a 404 not found.
-func TestAuthMissingFail(t *testing.T) {
-	w, r := MakePubRequest("/pub/", "MESSAGE")
+// It should not be possible to subscribe to an unsafe channel unless you
+// supply an appropriate header.
+func TestUnsafeSubMissingHeader(t *testing.T) {
+
+	w, r := MakeRequest("GET", "/unsafe/sub/", "")
 
 	func() {
 		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
@@ -69,45 +129,71 @@ func TestAuthMissingFail(t *testing.T) {
 		hookbot.ServeHTTP(w, r)
 	}()
 
-	if w.Code != http.StatusNotFound {
-		t.Errorf("Status code != 404 (= %v)", w.Code)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Status code != 400 (= %v)", w.Code)
+	}
+
+	response := string(w.Body.Bytes())
+	if response != "400 Bad Request. X-Hookbot-Unsafe-Is-Ok header required.\n" {
+		t.Errorf("Response body incorrect, got: %q", response)
 	}
 }
 
-// Invalid secret authentication should return 404 Not Found.
-func TestAuthInvalidSecret(t *testing.T) {
-	w, r := MakePubRequest("/pub/", "MESSAGE")
-
-	token := Sha1HMAC(TEST_KEY, "/pub/not/the/same/as/above") // bad secret
-	r.SetBasicAuth(token, "")
-
-	func() {
-		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
-		defer hookbot.Shutdown()
-
-		hookbot.ServeHTTP(w, r)
-	}()
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("Status code != 404 (= %v)", w.Code)
-	}
+type ResponseRecorderWithHijack struct {
+	*httptest.ResponseRecorder
 }
 
-// Valid secret authentication should return 200 OK
-func TestAuthSuccess(t *testing.T) {
-	w, r := MakePubRequest("/pub/place", "MESSAGE")
+var ErrCannotHijack = fmt.Errorf("cannot hijack ResponseRecorder")
+var _ http.Hijacker = &ResponseRecorderWithHijack{}
 
-	token := Sha1HMAC(TEST_KEY, "/pub/place")
-	r.SetBasicAuth(token, "")
+func (r *ResponseRecorderWithHijack) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return nil, nil, ErrCannotHijack
+}
+
+// If the molly guard is removed (see TestUnsafeSubMissingHeader), the request
+// should succeed (in this case, we get a protocol error because we tried
+// subsequently to establish a websocket)
+func TestUnsafeSubWithHeader(t *testing.T) {
+
+	w, r := MakeRequest("GET", "/unsafe/sub/", "")
+
+	r.Header.Add("X-Hookbot-Unsafe-Is-Ok",
+		"I understand the security implications")
+
+	wHijack := &ResponseRecorderWithHijack{w}
 
 	func() {
 		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
 		defer hookbot.Shutdown()
 
-		hookbot.ServeHTTP(w, r)
+		// TODO(pwaller): This is hideous, but I hope much of it will
+		// evaporate when we switch from x/net/websocket to gorilla/websocket.
+		func() {
+			defer func() {
+				err := recover()
+				if err == nil {
+					t.Fatal("This should panic from x/net/websocket")
+				}
+				switch err := err.(type) {
+				case string:
+					if err != "Hijack failed: cannot hijack ResponseRecorder" {
+						t.Fatal("Unexpected condition.")
+					}
+				default:
+					t.Logf("Panic: %T %#+v", err, err)
+				}
+			}()
+			hookbot.ServeHTTP(wHijack, r)
+		}()
 	}()
 
+	// Currently it's okay
 	if w.Code != http.StatusOK {
 		t.Errorf("Status code != 200 (= %v)", w.Code)
+	}
+
+	response := string(w.Body.Bytes())
+	if response != "" {
+		t.Errorf("Response body incorrect, got: %q", response)
 	}
 }
