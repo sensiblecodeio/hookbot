@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -124,13 +123,21 @@ func NewHookbot(key, github_secret string) *Hookbot {
 		delListener: make(chan Listener, 1),
 	}
 
-	mux := http.NewServeMux()
-	mux.Handle("/sub/", websocket.Handler(h.ServeSubscribe))
-	mux.HandleFunc("/pub/", h.ServePublish)
+	sub := websocket.Handler(h.ServeSubscribe)
+	pub := http.HandlerFunc(h.ServePublish)
 
-	// Middlewares
+	mux := http.NewServeMux()
+	mux.Handle("/sub/", h.KeyChecker(sub))
+	mux.Handle("/pub/", h.KeyChecker(pub))
+
+	// Require the key *and* a declaration that unsafe messages are OK.
+	mux.Handle("/unsafe/sub/", RequireUnsafeHeader(h.KeyChecker(sub)))
+
+	// Unsafe can be published to from anywhere, no key required.
+	// (so no KeyChecker)
+	mux.Handle("/unsafe/pub/", http.HandlerFunc(h.ServePublish))
+
 	h.Handler = mux
-	h.Handler = h.KeyChecker(h.Handler)
 
 	h.wg.Add(1)
 	go h.Loop()
@@ -265,8 +272,53 @@ func (h *Hookbot) IsKeyOK(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+var UnsafeURI = regexp.MustCompile("^/unsafe/(pub|sub)/.*")
+
+// Unsafe requests are those with URIs which have /unsafe/ as the second
+// path component.
+func IsUnsafeRequest(r *http.Request) bool {
+	return UnsafeURI.MatchString(r.URL.Path)
+}
+
+func RequireUnsafeHeader(wrapped http.Handler) http.HandlerFunc {
+	const ErrMsg = "400 Bad Request. X-Hookbot-Unsafe-Is-Ok header required."
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		values, have_unsafe_header := r.Header["X-Hookbot-Unsafe-Is-Ok"]
+
+		if IsUnsafeRequest(r) {
+			// "X-Hookbot-Unsafe-Is-Ok" header required
+			if !have_unsafe_header {
+				http.Error(w, ErrMsg, http.StatusBadRequest)
+				return
+			}
+
+			// Unsafe URLs can be published to by anyone on the internet
+			// without a valid key and it is *your* responsibility to check
+			// the key. This is so that the security checking can happen
+			// in another component (e.g, a thing that understand's github's
+			// signing mechanism). The header is required so that people
+			// don't mistakenly specify an unsafe URL in a component which
+			// must not use one.
+			if values[0] != "I understand the security implications" {
+				http.Error(w, ErrMsg, http.StatusBadRequest)
+				return
+			}
+		}
+
+		wrapped.ServeHTTP(w, r)
+	}
+}
+
 func (h *Hookbot) KeyChecker(wrapped http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if IsUnsafeRequest(r) {
+			// Unsafe requests don't check keys. See UnsafeChecker.
+			wrapped.ServeHTTP(w, r)
+			return
+		}
+
 		if !h.IsKeyOK(w, r) {
 			http.NotFound(w, r)
 			return
@@ -277,14 +329,21 @@ func (h *Hookbot) KeyChecker(wrapped http.Handler) http.HandlerFunc {
 }
 
 // The topic is everything after the "/pub/" or "/sub/"
-var TopicRE *regexp.Regexp = regexp.MustCompile("/[^/]+/(.*)")
+// Do not capture the "/unsafe". See note in `Topic()`.
+var TopicRE *regexp.Regexp = regexp.MustCompile("^(?:/unsafe)?/[^/]+/(.*)$")
 
-func Topic(url *url.URL) string {
-	m := TopicRE.FindStringSubmatch(url.Path)
+func Topic(r *http.Request) string {
+	m := TopicRE.FindStringSubmatch(r.URL.Path)
 	if m == nil {
 		return ""
 	}
-	return m[1]
+	topic := m[1]
+	if IsUnsafeRequest(r) {
+		// Note: `topic` cannot start `/unsafe/`, so it's
+		// not possible to alias it.
+		return "/unsafe/" + topic
+	}
+	return topic
 }
 
 func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
@@ -295,14 +354,24 @@ func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	topic := Topic(r.URL)
-	h.message <- Message{Topic: topic, Body: body}
+	done := make(chan struct{})
+
+	topic := Topic(r)
+
+	log.Printf("Publish %q", topic)
+
+	h.message <- Message{Topic: topic, Body: body, Done: done}
 	fmt.Fprintln(w, "OK")
+
+	// Wait for the listeners to be strobed.
+	// This is needed for testing purposes.
+	// :-(
+	<-done
 }
 
 func (h *Hookbot) ServeSubscribe(conn *websocket.Conn) {
 
-	topic := Topic(conn.Request().URL)
+	topic := Topic(conn.Request())
 
 	listener := h.Add(topic)
 	defer h.Del(listener)
