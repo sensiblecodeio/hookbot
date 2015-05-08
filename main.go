@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -44,6 +45,18 @@ func main() {
 			Aliases: []string{"t"},
 			Usage:   "given a list of URIs, generate tokens one per line",
 			Action:  ActionMakeTokens,
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:  "bare",
+					Usage: "print only tokens (not as basic-auth URLs)",
+				},
+				cli.StringFlag{
+					Name:   "url-base, U",
+					Value:  "http://localhost:8080",
+					Usage:  "base URL to generate for (not included in hmac)",
+					EnvVar: "HOOKBOT_URL_BASE",
+				},
+			},
 		},
 	}
 
@@ -70,8 +83,20 @@ func ActionMakeTokens(c *cli.Context) {
 		os.Exit(1)
 	}
 
+	baseStr := c.String("url-base")
+	base, err := url.ParseRequestURI(baseStr)
+	if err != nil {
+		log.Fatal("Unable to parse url-base %q: %v", baseStr, err)
+	}
+
 	for _, arg := range c.Args() {
-		fmt.Println(Sha1HMAC(key, arg))
+		mac := Sha1HMAC(key, arg)
+		if c.Bool("bare") {
+			fmt.Println(mac)
+		} else {
+			base.User = url.User(mac)
+			fmt.Print(base, arg, "\n")
+		}
 	}
 }
 
