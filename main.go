@@ -76,6 +76,8 @@ func MustGetKeysFromEnv() (string, string) {
 	return key, github_secret
 }
 
+var SubscribeURIRE = regexp.MustCompile("^(?:/unsafe)?/sub")
+
 func ActionMakeTokens(c *cli.Context) {
 	key, _ := MustGetKeysFromEnv()
 	if len(c.Args()) < 1 {
@@ -84,9 +86,28 @@ func ActionMakeTokens(c *cli.Context) {
 	}
 
 	baseStr := c.String("url-base")
-	base, err := url.ParseRequestURI(baseStr)
+	u, err := url.ParseRequestURI(baseStr)
 	if err != nil {
 		log.Fatal("Unable to parse url-base %q: %v", baseStr, err)
+	}
+
+	initialScheme := u.Scheme
+
+	getScheme := func(target string) string {
+
+		scheme := "http"
+
+		secure := "" // if https or wss, "s", "" otherwise.
+		switch initialScheme {
+		case "https", "wss":
+			secure = "s"
+		}
+
+		// If it's pub, use http(s), sub ws(s)
+		if SubscribeURIRE.MatchString(target) {
+			scheme = "ws"
+		}
+		return scheme + secure
 	}
 
 	for _, arg := range c.Args() {
@@ -94,8 +115,10 @@ func ActionMakeTokens(c *cli.Context) {
 		if c.Bool("bare") {
 			fmt.Println(mac)
 		} else {
-			base.User = url.User(mac)
-			fmt.Print(base, arg, "\n")
+			u.Scheme = getScheme(arg)
+			u.User = url.User(mac)
+			u.Path = arg
+			fmt.Println(u)
 		}
 	}
 }
