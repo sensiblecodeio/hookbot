@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -40,17 +41,21 @@ func main() {
 			},
 		},
 		{
-			Name:  "make-token",
-			Usage: "given a URI, generate a token",
-			Action: func(c *cli.Context) {
-				key, _ := MustGetKeysFromEnv()
-				if len(c.Args()) != 1 {
-					cli.ShowSubcommandHelp(c)
-					os.Exit(1)
-				}
-
-				url := c.Args().First()
-				fmt.Println(Sha1HMAC(key, url))
+			Name:    "make-tokens",
+			Aliases: []string{"t"},
+			Usage:   "given a list of URIs, generate tokens one per line",
+			Action:  ActionMakeTokens,
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:  "bare",
+					Usage: "print only tokens (not as basic-auth URLs)",
+				},
+				cli.StringFlag{
+					Name:   "url-base, U",
+					Value:  "http://localhost:8080",
+					Usage:  "base URL to generate for (not included in hmac)",
+					EnvVar: "HOOKBOT_URL_BASE",
+				},
 			},
 		},
 	}
@@ -69,6 +74,53 @@ func MustGetKeysFromEnv() (string, string) {
 	}
 
 	return key, github_secret
+}
+
+var SubscribeURIRE = regexp.MustCompile("^(?:/unsafe)?/sub")
+
+func ActionMakeTokens(c *cli.Context) {
+	key, _ := MustGetKeysFromEnv()
+	if len(c.Args()) < 1 {
+		cli.ShowSubcommandHelp(c)
+		os.Exit(1)
+	}
+
+	baseStr := c.String("url-base")
+	u, err := url.ParseRequestURI(baseStr)
+	if err != nil {
+		log.Fatal("Unable to parse url-base %q: %v", baseStr, err)
+	}
+
+	initialScheme := u.Scheme
+
+	getScheme := func(target string) string {
+
+		scheme := "http"
+
+		secure := "" // if https or wss, "s", "" otherwise.
+		switch initialScheme {
+		case "https", "wss":
+			secure = "s"
+		}
+
+		// If it's pub, use http(s), sub ws(s)
+		if SubscribeURIRE.MatchString(target) {
+			scheme = "ws"
+		}
+		return scheme + secure
+	}
+
+	for _, arg := range c.Args() {
+		mac := Sha1HMAC(key, arg)
+		if c.Bool("bare") {
+			fmt.Println(mac)
+		} else {
+			u.Scheme = getScheme(arg)
+			u.User = url.User(mac)
+			u.Path = arg
+			fmt.Println(u)
+		}
+	}
 }
 
 func ActionServe(c *cli.Context) {
