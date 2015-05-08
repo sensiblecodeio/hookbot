@@ -81,8 +81,6 @@ func TestUnsafePub(t *testing.T) {
 
 	run := func(iteration int) {
 
-		w, r := MakeRequest("POST", "/unsafe/pub/", "MESSAGE")
-
 		var c chan []byte
 
 		func() {
@@ -93,12 +91,14 @@ func TestUnsafePub(t *testing.T) {
 			defer hookbot.Del(msgs)
 			c = msgs.c
 
-			hookbot.ServeHTTP(w, r)
-		}()
+			w, r := MakeRequest("POST", "/unsafe/pub/", "MESSAGE")
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Status code != 200 (= %v)", w.Code)
-		}
+			hookbot.ServeHTTP(w, r)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("Status code != 200 (= %v)", w.Code)
+			}
+		}()
 
 		// Message should have been delivered by the time we see
 		// hookbot.Shutdown().
