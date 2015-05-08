@@ -5,7 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/subtle"
-	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -312,12 +312,11 @@ func (h *Hookbot) IsKeyOK(w http.ResponseWriter, r *http.Request) bool {
 	default:
 		return false // Not understood
 	case "basic":
-		givenMacBytes, err := base64.StdEncoding.DecodeString(givenKey)
-		if err != nil {
+		var ok bool
+		givenMac, _, ok = r.BasicAuth()
+		if !ok {
 			return false
 		}
-		// Remove trailing right colon, since it should be blank.
-		givenMac = strings.TrimRight(string(givenMacBytes), ":")
 
 	case "bearer":
 		givenMac = givenKey // No processing required
@@ -407,16 +406,17 @@ func Topic(r *http.Request) string {
 }
 
 func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
-	body, err := ioutil.ReadAll(r.Body)
-
-	if err != nil {
-		log.Printf("Error serving %v: %v", r.URL, err)
-		return
-	}
 
 	done := make(chan struct{})
 
 	topic := Topic(r)
+
+	body, err := json.Marshal(RequestJSONMarshaller{r})
+	if err != nil {
+		log.Println("Error in ServePublish:", err)
+		http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 
 	log.Printf("Publish %q", topic)
 
