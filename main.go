@@ -213,27 +213,34 @@ func (h *Hookbot) Shutdown() {
 func (h *Hookbot) Loop() {
 	defer h.wg.Done()
 
-	listeners := map[Listener]struct{}{}
+	// Map of topic to interested listeners
+	listeners := map[string]map[Listener]struct{}{}
 
 	for {
 		select {
 		case m := <-h.message:
 
 			// Strobe all interested listeners
-			for listener := range listeners {
-				if listener.Topic == m.Topic {
-					h.wg.Add(1)
-					go TimeoutSend(h.wg, listener.c, m.Body)
-				}
+			for listener := range listeners[m.Topic] {
+				h.wg.Add(1)
+				go TimeoutSend(h.wg, listener.c, m.Body)
 			}
 
 			close(m.Done)
 
 		case l := <-h.addListener:
-			listeners[l] = struct{}{}
+			if _, ok := listeners[l.Topic]; !ok {
+				listeners[l.Topic] = map[Listener]struct{}{}
+			}
+			listeners[l.Topic][l] = struct{}{}
 			close(l.ready)
+
 		case l := <-h.delListener:
-			delete(listeners, l)
+			delete(listeners[l.Topic], l)
+			if len(listeners[l.Topic]) == 0 {
+				delete(listeners, l.Topic)
+			}
+
 		case <-h.shutdown:
 			return
 		}
@@ -244,6 +251,8 @@ func (h *Hookbot) Add(topic string) Listener {
 	ready := make(chan struct{})
 	l := Listener{
 		Topic: topic,
+		// Use a channel depth of 1 so that tests don't require reading it
+		// synchronously.
 		c:     make(chan []byte, 1),
 		ready: ready,
 	}
