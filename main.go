@@ -23,9 +23,10 @@ func main() {
 
 	app.Commands = []cli.Command{
 		{
-			Name:   "serve",
-			Usage:  "start a hookbot instance, listening on http",
-			Action: ActionServe,
+			Name:    "serve",
+			Aliases: []string{"s"},
+			Usage:   "start a hookbot instance, listening on http",
+			Action:  ActionServe,
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:  "bind, b",
@@ -51,6 +52,12 @@ func main() {
 					EnvVar: "HOOKBOT_URL_BASE",
 				},
 			},
+		},
+		{
+			Name:    "copy",
+			Aliases: []string{"cp"},
+			Usage:   "act as a hookbot server, relaying messages from a specified endpoint",
+			Action:  ActionCopy,
 		},
 	}
 
