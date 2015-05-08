@@ -40,18 +40,9 @@ func main() {
 			},
 		},
 		{
-			Name:  "make-token",
-			Usage: "given a URI, generate a token",
-			Action: func(c *cli.Context) {
-				key, _ := MustGetKeysFromEnv()
-				if len(c.Args()) != 1 {
-					cli.ShowSubcommandHelp(c)
-					os.Exit(1)
-				}
-
-				url := c.Args().First()
-				fmt.Println(Sha1HMAC(key, url))
-			},
+			Name:   "make-token",
+			Usage:  "given a URI, generate a token",
+			Action: ActionMakeToken,
 		},
 	}
 
@@ -69,6 +60,17 @@ func MustGetKeysFromEnv() (string, string) {
 	}
 
 	return key, github_secret
+}
+
+func ActionMakeToken(c *cli.Context) {
+	key, _ := MustGetKeysFromEnv()
+	if len(c.Args()) != 1 {
+		cli.ShowSubcommandHelp(c)
+		os.Exit(1)
+	}
+
+	url := c.Args().First()
+	fmt.Println(Sha1HMAC(key, url))
 }
 
 func ActionServe(c *cli.Context) {
