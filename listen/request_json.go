@@ -42,26 +42,19 @@ func (r Message) MarshalJSON() ([]byte, error) {
 
 	fmt.Fprint(&buf, `"Body": `) // follows
 
-	if r.Header.Get("Content-Type") == "application/json" {
-		//
-		_, err := buf.ReadFrom(r.Body)
-		if err != nil {
-			err = fmt.Errorf("serialize: error reading request body: %v", err)
-			return nil, err
-		}
-	} else {
-		bs, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			err = fmt.Errorf("serialize: error reading request body: %v", err)
-			return nil, err
-		}
-		bs, err = asJSON(string(bs))
-		if err != nil {
-			err = fmt.Errorf("serialize: error marshalling: %v", err)
-			return nil, err
-		}
-		fmt.Fprintf(&buf, "%s", bs)
+	// Serialize body as JSON
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		err = fmt.Errorf("serialize: error reading request body: %v", err)
+		return nil, err
 	}
+	body, err = asJSON(string(body))
+	if err != nil {
+		err = fmt.Errorf("serialize: error marshalling: %v", err)
+		return nil, err
+	}
+	fmt.Fprint(&buf, body)
+
 	r.Body.Close()
 
 	fmt.Fprint(&buf, "}") // close whole document
@@ -79,7 +72,7 @@ func (r *Message) UnmarshalJSON(data []byte) error {
 		URL        string
 		RemoteAddr string
 		Header     http.Header
-		Body       interface{}
+		Body       string
 	}
 
 	d := DecodeBuf{}
@@ -88,18 +81,14 @@ func (r *Message) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	body, err := json.Marshal(d.Body)
-	if err != nil {
-		return err
-	}
-
 	r.URL, err = url.Parse(d.URL)
 	if err != nil {
 		return fmt.Errorf("error parsing URL %q: %v", d.URL, err)
 	}
+	r.RequestURI = r.URL.RequestURI()
 	r.RemoteAddr = d.RemoteAddr
 	r.Header = d.Header
-	r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+	r.Body = ioutil.NopCloser(bytes.NewBuffer([]byte(body)))
 
 	return nil
 }

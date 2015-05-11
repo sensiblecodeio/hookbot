@@ -56,8 +56,6 @@ func ActionRoute(c *cli.Context) {
 	header.Add("Origin", origin)
 	header.Add("X-Hookbot-Unsafe-Is-Ok", "I understand the security implications")
 
-	header.Write(os.Stdout)
-
 	messages, errors, err := listen.Watch(target, header, finish)
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
