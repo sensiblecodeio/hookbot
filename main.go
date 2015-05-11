@@ -15,6 +15,9 @@ import (
 
 	"github.com/codegangsta/cli"
 	"github.com/gorilla/websocket"
+
+	"github.com/scraperwiki/hookbot/listen"
+	"github.com/scraperwiki/hookbot/router/github"
 )
 
 func main() {
@@ -50,6 +53,29 @@ func main() {
 					Value:  "http://localhost:8080",
 					Usage:  "base URL to generate for (not included in hmac)",
 					EnvVar: "HOOKBOT_URL_BASE",
+				},
+			},
+		},
+		{
+			Name:   "route-github",
+			Usage:  "route github requests",
+			Action: github.ActionRoute,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "monitor-url, u",
+					Usage: "URL to monitor",
+				},
+				cli.StringFlag{
+					Name:   "origin",
+					Value:  "samehost",
+					Usage:  "URL to use for the origin header ('samehost' is special)",
+					EnvVar: "HOOKBOT_ORIGIN",
+				},
+				cli.StringSliceFlag{
+					Name:   "header, H",
+					Usage:  "headers to pass to the remote",
+					Value:  &cli.StringSlice{},
+					EnvVar: "HOOKBOT_HEADER",
 				},
 			},
 		},
@@ -328,7 +354,7 @@ func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 
 	topic := Topic(r)
 
-	body, err := json.Marshal(RequestJSONMarshaller{r})
+	body, err := json.Marshal(listen.Message{r})
 	if err != nil {
 		log.Println("Error in ServePublish:", err)
 		http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)

@@ -1,4 +1,4 @@
-package main
+package listen
 
 import (
 	"bytes"
@@ -9,11 +9,11 @@ import (
 	"net/url"
 )
 
-type RequestJSONMarshaller struct {
+type Message struct {
 	*http.Request
 }
 
-func (r RequestJSONMarshaller) MarshalJSON() ([]byte, error) {
+func (r Message) MarshalJSON() ([]byte, error) {
 
 	asJSON := func(v interface{}) ([]byte, error) {
 		marshalled, err := json.Marshal(v)
@@ -69,7 +69,12 @@ func (r RequestJSONMarshaller) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (r RequestJSONMarshaller) UnmarshalJSON(data []byte) error {
+func (r *Message) UnmarshalJSON(data []byte) error {
+
+	if r.Request == nil {
+		r.Request = &http.Request{}
+	}
+
 	type DecodeBuf struct {
 		URL        string
 		RemoteAddr string
