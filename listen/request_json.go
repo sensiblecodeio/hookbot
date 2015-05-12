@@ -5,12 +5,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 )
 
 type Message struct {
 	*http.Request
+}
+
+// Read out the full request body and replace it with a buffer
+func (m Message) Payload() ([]byte, error) {
+	body, err := ioutil.ReadAll(m.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	m.Body = ioutil.NopCloser(bytes.NewReader(body))
+
+	return body, err
 }
 
 func (r Message) MarshalJSON() ([]byte, error) {
@@ -53,7 +66,7 @@ func (r Message) MarshalJSON() ([]byte, error) {
 		err = fmt.Errorf("serialize: error marshalling: %v", err)
 		return nil, err
 	}
-	fmt.Fprint(&buf, body)
+	fmt.Fprintf(&buf, "%s", body)
 
 	r.Body.Close()
 
@@ -88,7 +101,7 @@ func (r *Message) UnmarshalJSON(data []byte) error {
 	r.RequestURI = r.URL.RequestURI()
 	r.RemoteAddr = d.RemoteAddr
 	r.Header = d.Header
-	r.Body = ioutil.NopCloser(bytes.NewBuffer([]byte(body)))
+	r.Body = ioutil.NopCloser(bytes.NewBuffer([]byte(d.Body)))
 
 	return nil
 }
