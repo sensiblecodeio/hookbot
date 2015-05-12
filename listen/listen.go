@@ -4,8 +4,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -44,6 +46,20 @@ func Watch(
 		return nil, nil, &ErrConnectionFail{resp, err}
 	}
 
+	const (
+		pongWait = 40 * time.Second
+	)
+
+	const MiB = 1 << 20
+	conn.SetReadLimit(1 * MiB)
+
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		log.Println("Pong")
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
 	messages := make(chan Message, 1)
 	errors := make(chan error, 1)
 	readerDone := make(chan struct{})
@@ -53,9 +69,21 @@ func Watch(
 		defer close(messages)
 		defer conn.Close()
 
-		select {
-		case <-finish:
-		case <-readerDone:
+		for {
+			select {
+			case <-time.After(20 * time.Second):
+				log.Println("Ping")
+				conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				err := conn.WriteMessage(websocket.PingMessage, []byte{})
+				if err != nil {
+					log.Printf("Error in WriteMessage: %v", err)
+					return
+				}
+			case <-finish:
+				return
+			case <-readerDone:
+				return
+			}
 		}
 	}()
 
@@ -68,6 +96,7 @@ func Watch(
 			_, r, err := conn.NextReader()
 			if err != nil {
 				errors <- err
+				log.Printf("Error in NextReader(): %v", err)
 				return
 			}
 
@@ -75,6 +104,7 @@ func Watch(
 
 			err = json.NewDecoder(r).Decode(&m)
 			if err != nil {
+				log.Printf("Error in json.NewDecoder(r).Decode(): %v", err)
 				errors <- err
 				return
 			}
