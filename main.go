@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -209,6 +210,15 @@ func (h *Hookbot) Shutdown() {
 	h.wg.Wait()
 }
 
+// Returns "true" if fullTopic ends with `?recursive` and returns topic name
+// without `?recursive` suffix.
+func recursive(fullTopic string) (topic string, isRecursive bool) {
+	if strings.HasSuffix(fullTopic, "?recursive") {
+		return fullTopic[:len(fullTopic)-len("?recursive")], true
+	}
+	return fullTopic, false
+}
+
 // Manage fanout from h.message onto listeners
 func (h *Hookbot) Loop() {
 	defer h.wg.Done()
@@ -216,12 +226,41 @@ func (h *Hookbot) Loop() {
 	// Map of topic to interested listeners
 	listeners := map[string]map[Listener]struct{}{}
 
+	// Return the set of interested listeners for a topic, considering
+	// recursive watches.
+	interested := func(topic string) map[Listener]struct{} {
+
+		ls := map[Listener]struct{}{}
+
+		// Non-recursive
+		for l := range listeners[topic] {
+			ls[l] = struct{}{}
+		}
+
+		// Recursive
+		for fullCandidateTopic, candidateLs := range listeners {
+			candidateTopic, isRec := recursive(fullCandidateTopic)
+			if !isRec {
+				continue
+			}
+			// Does the topic for signalling have a prefix our recursive
+			// listeners are interested in?
+			if !strings.HasPrefix(topic, candidateTopic) {
+				continue
+			}
+			for l := range candidateLs {
+				ls[l] = struct{}{}
+			}
+		}
+		return ls
+	}
+
 	for {
 		select {
 		case m := <-h.message:
 
 			// Strobe all interested listeners
-			for listener := range listeners[m.Topic] {
+			for listener := range interested(m.Topic) {
 				h.wg.Add(1)
 				go TimeoutSend(h.wg, listener.c, m.Body)
 			}
