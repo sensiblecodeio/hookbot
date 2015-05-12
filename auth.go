@@ -12,6 +12,12 @@ import (
 	"strings"
 )
 
+func Sha1HMAC(key, payload string) string {
+	mac := hmac.New(sha1.New, []byte(key))
+	_, _ = mac.Write([]byte(payload))
+	return fmt.Sprintf("%x", mac.Sum(nil))
+}
+
 func SecureEqual(x, y string) bool {
 	if subtle.ConstantTimeCompare([]byte(x), []byte(y)) == 1 {
 		return true
@@ -30,12 +36,6 @@ func (h *Hookbot) IsGithubKeyOK(w http.ResponseWriter, r *http.Request) bool {
 	expected := fmt.Sprintf("sha1=%v", Sha1HMAC(h.github_secret, string(body)))
 
 	return SecureEqual(r.Header.Get("X-Hub-Signature"), expected)
-}
-
-func Sha1HMAC(key, payload string) string {
-	mac := hmac.New(sha1.New, []byte(key))
-	_, _ = mac.Write([]byte(payload))
-	return fmt.Sprintf("%x", mac.Sum(nil))
 }
 
 func (h *Hookbot) IsKeyOK(w http.ResponseWriter, r *http.Request) bool {
