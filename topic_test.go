@@ -26,7 +26,7 @@ func TestTopicsIndependent(t *testing.T) {
 	var c1, c2 chan []byte
 
 	func() {
-		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
+		hookbot := NewHookbot(TEST_KEY)
 		defer hookbot.Shutdown()
 
 		msgsC1 := hookbot.Add("/unsafe/1")
@@ -65,7 +65,7 @@ func TestTopicsRecursive(t *testing.T) {
 	var c1, c2 chan []byte
 
 	func() {
-		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
+		hookbot := NewHookbot(TEST_KEY)
 		defer hookbot.Shutdown()
 
 		msgsC1 := hookbot.Add("/unsafe/foo/?recursive")
@@ -112,7 +112,7 @@ func TestTopicsNotRecursive(t *testing.T) {
 	var c1, c2 chan []byte
 
 	func() {
-		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
+		hookbot := NewHookbot(TEST_KEY)
 		defer hookbot.Shutdown()
 
 		msgsC1 := hookbot.Add("/unsafe/foo/")

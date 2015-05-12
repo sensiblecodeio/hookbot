@@ -27,7 +27,7 @@ func TestAuthMissingFail(t *testing.T) {
 	w, r := MakeRequest("POST", "/pub/", "MESSAGE")
 
 	func() {
-		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
+		hookbot := NewHookbot(TEST_KEY)
 		defer hookbot.Shutdown()
 
 		hookbot.ServeHTTP(w, r)
@@ -46,7 +46,7 @@ func TestAuthInvalidSecret(t *testing.T) {
 	r.SetBasicAuth(token, "")
 
 	func() {
-		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
+		hookbot := NewHookbot(TEST_KEY)
 		defer hookbot.Shutdown()
 
 		hookbot.ServeHTTP(w, r)
@@ -65,7 +65,7 @@ func TestAuthSuccess(t *testing.T) {
 	r.SetBasicAuth(token, "")
 
 	func() {
-		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
+		hookbot := NewHookbot(TEST_KEY)
 		defer hookbot.Shutdown()
 
 		hookbot.ServeHTTP(w, r)
@@ -84,7 +84,7 @@ func TestUnsafePub(t *testing.T) {
 		var c chan []byte
 
 		func() {
-			hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
+			hookbot := NewHookbot(TEST_KEY)
 			defer hookbot.Shutdown()
 
 			msgs := hookbot.Add("/unsafe/")
@@ -123,7 +123,7 @@ func TestUnsafeSubMissingHeader(t *testing.T) {
 	w, r := MakeRequest("GET", "/unsafe/sub/", "")
 
 	func() {
-		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
+		hookbot := NewHookbot(TEST_KEY)
 		defer hookbot.Shutdown()
 
 		hookbot.ServeHTTP(w, r)
@@ -163,7 +163,7 @@ func TestUnsafeSubWithHeader(t *testing.T) {
 	wHijack := &ResponseRecorderWithHijack{w}
 
 	func() {
-		hookbot := NewHookbot(TEST_KEY, TEST_GITHUB_SECRET)
+		hookbot := NewHookbot(TEST_KEY)
 		defer hookbot.Shutdown()
 
 		hookbot.ServeHTTP(wHijack, r)

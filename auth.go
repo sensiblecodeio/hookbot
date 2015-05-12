@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/subtle"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strings"
@@ -25,27 +23,7 @@ func SecureEqual(x, y string) bool {
 	return false
 }
 
-func (h *Hookbot) IsGithubKeyOK(w http.ResponseWriter, r *http.Request) bool {
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Not Authorized", http.StatusUnauthorized)
-	}
-
-	r.Body = ioutil.NopCloser(bytes.NewReader(body))
-
-	expected := fmt.Sprintf("sha1=%v", Sha1HMAC(h.github_secret, string(body)))
-
-	return SecureEqual(r.Header.Get("X-Hub-Signature"), expected)
-}
-
 func (h *Hookbot) IsKeyOK(w http.ResponseWriter, r *http.Request) bool {
-
-	if _, ok := r.Header["X-Hub-Signature"]; ok {
-		if !h.IsGithubKeyOK(w, r) {
-			return false
-		}
-		return true
-	}
 
 	authorization := r.Header.Get("Authorization")
 	fields := strings.Fields(authorization)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -24,6 +25,19 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "hookbot"
 	app.Usage = "turn webhooks into websockets"
+
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:   "key",
+			Usage:  "secret known only for hootbot for URL access control",
+			EnvVar: "HOOKBOT_KEY",
+		},
+		cli.StringFlag{
+			Name:   "github-secret",
+			Usage:  "secret known by github for signing messages",
+			EnvVar: "HOOKBOT_GITHUB_SECRET",
+		},
+	}
 
 	app.Commands = []cli.Command{
 		{
@@ -84,23 +98,15 @@ func main() {
 	app.RunAndExitOnError()
 }
 
-func MustGetKeysFromEnv() (string, string) {
-	var (
-		key           = os.Getenv("HOOKBOT_KEY")
-		github_secret = os.Getenv("HOOKBOT_GITHUB_SECRET")
-	)
-
-	if key == "" || github_secret == "" {
-		log.Fatalln("Error: HOOKBOT_KEY or HOOKBOT_GITHUB_SECRET not set")
-	}
-
-	return key, github_secret
-}
-
 var SubscribeURIRE = regexp.MustCompile("^(?:/unsafe)?/sub")
 
 func ActionMakeTokens(c *cli.Context) {
-	key, _ := MustGetKeysFromEnv()
+	if !c.GlobalIsSet("key") {
+		log.Fatalln("HOOKBOT_KEY not set")
+	}
+
+	key := c.GlobalString("key")
+
 	if len(c.Args()) < 1 {
 		cli.ShowSubcommandHelp(c)
 		os.Exit(1)
@@ -145,9 +151,14 @@ func ActionMakeTokens(c *cli.Context) {
 }
 
 func ActionServe(c *cli.Context) {
-	key, github_secret := MustGetKeysFromEnv()
+	if !c.GlobalIsSet("key") {
+		log.Fatalln("HOOKBOT_KEY not set")
+	}
 
-	hookbot := NewHookbot(key, github_secret)
+	key := c.GlobalString("key")
+
+	hookbot := NewHookbot(key)
+
 	http.Handle("/", hookbot)
 	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "OK")
@@ -174,7 +185,7 @@ type Listener struct {
 }
 
 type Hookbot struct {
-	key, github_secret string
+	key string
 
 	wg       *sync.WaitGroup
 	shutdown chan struct{}
@@ -185,9 +196,9 @@ type Hookbot struct {
 	addListener, delListener chan Listener
 }
 
-func NewHookbot(key, github_secret string) *Hookbot {
+func NewHookbot(key string) *Hookbot {
 	h := &Hookbot{
-		key: key, github_secret: github_secret,
+		key: key,
 
 		wg:       &sync.WaitGroup{},
 		shutdown: make(chan struct{}),
@@ -354,7 +365,17 @@ func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 
 	topic := Topic(r)
 
-	body, err := json.Marshal(listen.Message{r})
+	var (
+		body []byte
+		err  error
+	)
+
+	if r.Header.Get("Content-Type") == "application/hookbot+any" {
+		body, err = ioutil.ReadAll(r.Body)
+	} else {
+		body, err = json.Marshal(listen.Message{r})
+	}
+
 	if err != nil {
 		log.Println("Error in ServePublish:", err)
 		http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
@@ -365,6 +386,8 @@ func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 
 	h.message <- Message{Topic: topic, Body: body, Done: done}
 	fmt.Fprintln(w, "OK")
+
+	// TODO(pwaller): Loop over applicable routers here
 
 	// Wait for the listeners to be strobed.
 	// This is needed for testing purposes.
