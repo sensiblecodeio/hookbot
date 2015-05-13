@@ -370,7 +370,8 @@ func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 		err  error
 	)
 
-	if r.Header.Get("Content-Type") == "application/hookbot+any" {
+	if r.Header.Get("Content-Type") == "application/hookbot+raw" {
+		// If Content-Type is application/hookbot+raw, do not add further annotation
 		body, err = ioutil.ReadAll(r.Body)
 	} else {
 		body, err = json.Marshal(listen.Message{r})
