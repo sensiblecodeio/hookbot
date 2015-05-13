@@ -1,7 +1,10 @@
 package github
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -95,6 +98,8 @@ func Connection(key, github_secret string, u *url.URL, header http.Header) {
 			}
 			out.SetBasicAuth(token, "")
 
+			out.Header.Set("Content-Type", "application/hookbot+raw")
+
 			resp, err := http.DefaultClient.Do(out)
 			if err != nil {
 				log.Printf("Failed to transmit: %v", err)
@@ -135,6 +140,10 @@ type Event struct {
 	After  string `json:"after"`
 }
 
+func (e *Event) Branch() string {
+	return strings.TrimPrefix(e.Ref, "refs/heads/")
+}
+
 type Pusher struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
@@ -155,6 +164,7 @@ func Route(message listen.Message) (listen.Message, bool) {
 	payload, err := message.Payload()
 	if err != nil {
 		log.Printf("Failed to obtain payload: %v", err)
+		return listen.Message{}, false
 	}
 
 	var v Event
@@ -172,12 +182,24 @@ func Route(message listen.Message) (listen.Message, bool) {
 	}
 
 	repo := v.Repository.FullName
+	branch := v.Branch()
 
-	message.URL.Path = "/pub/github.com/repo/" + repo + "/push/branch/master"
+	urlFmt := "/pub/github.com/repo/%s/push/branch/%s"
+	message.URL.Path = fmt.Sprintf(urlFmt, repo, branch)
 
-	// switch c.Type {
-	// 	case
-	// }
+	type Update struct {
+		Repo, Branch, SHA, Who string
+	}
+
+	msgBytes, err := json.Marshal(&Update{
+		repo, branch, v.After, v.Pusher.Name,
+	})
+	if err != nil {
+		log.Printf("Failed to marshal Update: %v", err)
+		return listen.Message{}, false
+	}
+
+	message.Body = ioutil.NopCloser(bytes.NewBuffer(msgBytes))
 
 	return message, true
 }
