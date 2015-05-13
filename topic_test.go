@@ -1,23 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"testing"
 )
-
-func getBody(m []byte) (string, error) {
-	type Buf struct {
-		Body string
-	}
-
-	buf := Buf{}
-	err := json.Unmarshal(m, &buf)
-	if err != nil {
-		return "", err
-	}
-
-	return buf.Body, nil
-}
 
 // Ensure that messages are delivered to the intended topics.
 // Deliver two messages to two different topics and check they arrive.
@@ -43,12 +28,8 @@ func TestTopicsIndependent(t *testing.T) {
 	checkDelivered := func(c chan []byte, expected string) {
 		select {
 		case m := <-c:
-			body, err := getBody(m)
-			if err != nil {
-				t.Fatalf("Failed to decode body: %v (%q)", err, m)
-			}
-			if body != expected {
-				t.Errorf("m != %s (=%q)", expected, body)
+			if string(m) != expected {
+				t.Errorf("m != %s (=%q)", expected, string(m))
 			}
 		default:
 			t.Fatalf("Message not delivered correctly: %q", expected)
@@ -85,12 +66,8 @@ func TestTopicsRecursive(t *testing.T) {
 	checkDelivered := func(c chan []byte, expected string) bool {
 		select {
 		case m := <-c:
-			body, err := getBody(m)
-			if err != nil {
-				t.Fatalf("Failed to decode body: %v (%q)", err, m)
-			}
-			if body != expected {
-				t.Errorf("m != %s (=%q)", expected, body)
+			if string(m) != expected {
+				t.Errorf("m != %s (=%q)", expected, string(m))
 			}
 		default:
 			return false
@@ -132,12 +109,8 @@ func TestTopicsNotRecursive(t *testing.T) {
 	checkDelivered := func(c chan []byte, expected string) bool {
 		select {
 		case m := <-c:
-			body, err := getBody(m)
-			if err != nil {
-				t.Fatalf("Failed to decode body: %v (%q)", err, m)
-			}
-			if body != expected {
-				t.Errorf("m != %s (=%q)", expected, body)
+			if string(m) != expected {
+				t.Errorf("m != %s (=%q)", expected, string(m))
 			}
 		default:
 			return false

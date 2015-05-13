@@ -17,7 +17,6 @@ import (
 	"github.com/codegangsta/cli"
 	"github.com/gorilla/websocket"
 
-	"github.com/scraperwiki/hookbot/listen"
 	"github.com/scraperwiki/hookbot/router/github"
 )
 
@@ -370,25 +369,45 @@ func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 		err  error
 	)
 
-	if r.Header.Get("Content-Type") == "application/hookbot+raw" {
-		// If Content-Type is application/hookbot+raw, do not add further annotation
-		body, err = ioutil.ReadAll(r.Body)
-	} else {
-		body, err = json.Marshal(listen.Message{r})
+	body, err = ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Println("Error in ServePublish reading body:", err)
+		http.Error(w, "500 Internal Server Error",
+			http.StatusInternalServerError)
+		return
 	}
 
-	if err != nil {
-		log.Println("Error in ServePublish:", err)
-		http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
-		return
+	// The extra-metadata field enables clients to specify that information
+	// is passed out of band. Currently, this only supports github.
+	extraMetadata := r.URL.Query()["extra-metadata"]
+	if len(extraMetadata) > 0 {
+		switch extraMetadata[0] {
+		case "github":
+
+			body, err = json.Marshal(map[string]interface{}{
+				"Signature": r.Header.Get("X-Hub-Signature"),
+				"Event":     r.Header.Get("X-GitHub-Event"),
+				"Delivery":  r.Header.Get("X-GitHub-Delivery"),
+				"Payload":   body,
+			})
+
+			if err != nil {
+				log.Println("Error in ServePublish serializing payload:", err)
+				http.Error(w, "500 Internal Server Error",
+					http.StatusInternalServerError)
+			}
+
+		default:
+			http.Error(w, "400 Bad Request (bad ?extra-metadata=)",
+				http.StatusBadRequest)
+			return
+		}
 	}
 
 	log.Printf("Publish %q", topic)
 
 	h.message <- Message{Topic: topic, Body: body, Done: done}
 	fmt.Fprintln(w, "OK")
-
-	// TODO(pwaller): Loop over applicable routers here
 
 	// Wait for the listeners to be strobed.
 	// This is needed for testing purposes.

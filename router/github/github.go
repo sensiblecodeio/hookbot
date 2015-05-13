@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/codegangsta/cli"
 	"github.com/scraperwiki/hookbot/listen"
@@ -29,10 +28,10 @@ func MustParseHeader(header string) (string, string) {
 	return parts[1], parts[2]
 }
 
-func MustParseHeaders(c *cli.Context) http.Header {
+func MustParseHeaders(headerStrings []string) http.Header {
 	headers := http.Header{}
 
-	for _, h := range c.StringSlice("header") {
+	for _, h := range headerStrings {
 		key, value := MustParseHeader(h)
 		headers.Set(key, value)
 	}
@@ -40,93 +39,78 @@ func MustParseHeaders(c *cli.Context) http.Header {
 	return headers
 }
 
-func ActionRoute(c *cli.Context) {
+func MustMakeHeader(
+	target *url.URL, origin string, headerStrings []string,
+) http.Header {
 
-	target := c.String("monitor-url")
-
-	u, err := url.Parse(target)
-	if err != nil {
-		log.Fatalf("Failed to parse %q as URL: %v", target, u)
-	}
-
-	header := MustParseHeaders(c)
-	origin := c.String("origin")
+	header := MustParseHeaders(headerStrings)
 	if origin == "samehost" {
-		origin = "//" + u.Host
+		origin = "//" + target.Host
 	}
 
 	header.Add("Origin", origin)
-	header.Add("X-Hookbot-Unsafe-Is-Ok", "I understand the security implications")
+	header.Add("X-Hookbot-Unsafe-Is-Ok",
+		"I understand the security implications")
 
-	key := c.GlobalString("key")
-	github_secret := c.GlobalString("github-secret")
-
-	for {
-		Connection(key, github_secret, u, header)
-
-		log.Println("Router failed; waiting 5 seconds and retrying…")
-		time.Sleep(5 * time.Second)
-	}
+	return header
 }
 
-func Connection(key, github_secret string, u *url.URL, header http.Header) {
-	finish := make(chan struct{})
+func ActionRoute(c *cli.Context) {
 
-	messages, errors, err := listen.Watch(u.String(), header, finish)
+	target, err := url.Parse(c.String("monitor-url"))
 	if err != nil {
-		log.Printf("Failed to connect: %v", err)
-		return
+		log.Fatalf("Failed to parse %q as URL: %v", c.String("monitor-url"), err)
 	}
 
-	log.Println("Connection to hookbot instance established")
+	origin := c.String("origin")
+
+	header := MustMakeHeader(target, origin, c.StringSlice("header"))
+	finish := make(chan struct{})
+
+	messages, errors := listen.RetryingWatch(target.String(), header, finish)
 
 	outbound := make(chan listen.Message, 1)
 
+	send := func(endpoint string, payload []byte) {
+		log.Printf("TODO(pwaller) transmit to %q", endpoint)
+
+		token := Sha1HMAC(c.GlobalString("key"), []byte(endpoint))
+
+		outURL := fmt.Sprintf("https://%v@%v%v", token, target.Host, endpoint)
+
+		body := ioutil.NopCloser(bytes.NewBuffer(payload))
+
+		out, err := http.NewRequest("POST", outURL, body)
+		if err != nil {
+			log.Printf("Failed to construct outbound req: %v", err)
+			return
+		}
+		out.SetBasicAuth(token, "")
+
+		resp, err := http.DefaultClient.Do(out)
+		if err != nil {
+			log.Printf("Failed to transmit: %v", err)
+			return
+		}
+		log.Printf("Transmit: %v %v", resp.StatusCode, outURL)
+	}
+
 	go func() {
-		for m := range outbound {
-			outURL := m.URL
-
-			token := Sha1HMAC(key, outURL.Path)
-
-			outURL.Scheme = "https"
-			outURL.Host = u.Host
-
-			out, err := http.NewRequest("POST", outURL.String(), m.Body)
-			if err != nil {
-				log.Printf("Failed to construct outbound req: %v", err)
-				continue
-			}
-			out.SetBasicAuth(token, "")
-
-			out.Header.Set("Content-Type", "application/hookbot+raw")
-
-			resp, err := http.DefaultClient.Do(out)
-			if err != nil {
-				log.Printf("Failed to transmit: %v", err)
-				continue
-			}
-			log.Printf("Transmit: %v %v", resp.StatusCode, outURL.String())
+		for err := range errors {
+			log.Printf("Encountered error in Watch: %v", err)
 		}
 	}()
 
 	for m := range messages {
-		if !IsValidGithubSignature(github_secret, m.Request) {
+		log.Printf("Receive message")
+		if !IsValidGithubSignature(c.GlobalString("github-secret"), m) {
 			log.Printf("Reject github signature")
 			continue
 		}
 
-		routed, ok := Route(m)
-		if !ok {
-			continue
-		}
-
-		outbound <- routed
+		Route(m, send)
 	}
 	close(outbound)
-
-	for err := range errors {
-		log.Printf("Encountered error during message parsing: %v", err)
-	}
 }
 
 type Event struct {
@@ -153,53 +137,63 @@ type Repository struct {
 	FullName string `json:"full_name"`
 }
 
-func Route(message listen.Message) (listen.Message, bool) {
+func Route(message []byte, send func(string, []byte)) {
 
-	if !strings.HasPrefix(message.URL.Path, "/unsafe/") {
-		log.Printf("Message URL does not begin with /unsafe/, ignoring %q",
-			message.URL.Path)
-		return listen.Message{}, false
+	type GithubMessage struct {
+		Event, Signature string
+		Payload          []byte
 	}
 
-	payload, err := message.Payload()
+	var m GithubMessage
+
+	err := json.Unmarshal(message, &m)
 	if err != nil {
-		log.Printf("Failed to obtain payload: %v", err)
-		return listen.Message{}, false
+		log.Printf("Failed to unmarshal message in IsValidGithubSignature: %v",
+			err)
+		return
 	}
 
-	var v Event
-	v.Type = message.Header.Get("X-Github-Event")
+	var event Event
+	event.Type = m.Event
 
-	err = json.Unmarshal(payload, &v)
+	err = json.Unmarshal(m.Payload, &event)
 	if err != nil {
 		log.Printf("Route: error in json.Unmarshal: %v", err)
-		return listen.Message{}, false
+		return
 	}
 
-	if v.Repository == nil || v.Repository.FullName == "" {
-		log.Printf("Could not identify repository for event %v", v.Type)
-		return listen.Message{}, false
+	if event.Repository == nil || event.Repository.FullName == "" {
+		log.Printf("Could not identify repository for event %v", event.Type)
+		return
 	}
 
-	repo := v.Repository.FullName
-	branch := v.Branch()
+	repo := event.Repository.FullName
+	branch := event.Branch()
 
-	urlFmt := "/pub/github.com/repo/%s/push/branch/%s"
-	message.URL.Path = fmt.Sprintf(urlFmt, repo, branch)
-
-	type Update struct {
-		Repo, Branch, SHA, Who string
+	who := "<unknown>"
+	if event.Pusher != nil {
+		who = event.Pusher.Name
 	}
 
-	msgBytes, err := json.Marshal(&Update{
-		repo, branch, v.After, v.Pusher.Name,
+	msgBytes, err := json.Marshal(map[string]string{
+		"Type":   event.Type,
+		"Repo":   repo,
+		"Branch": branch,
+		"SHA":    event.After,
+		"Who":    who,
 	})
 	if err != nil {
 		log.Printf("Failed to marshal Update: %v", err)
-		return listen.Message{}, false
+		return
 	}
 
-	message.Body = ioutil.NopCloser(bytes.NewBuffer(msgBytes))
-
-	return message, true
+	switch event.Type {
+	case "push":
+		urlFmt := "/pub/github.com/repo/%s/push/branch/%s"
+		target := fmt.Sprintf(urlFmt, repo, branch)
+		send(target, msgBytes)
+	default:
+		log.Printf("Unhandled event type: %v", event.Type)
+		return
+	}
 }

@@ -2,9 +2,10 @@ package listen
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"time"
@@ -27,7 +28,7 @@ func (e *ErrConnectionFail) Error() string {
 
 func Watch(
 	target string, header http.Header, finish <-chan struct{},
-) (<-chan Message, <-chan error, error) {
+) (<-chan []byte, <-chan error, error) {
 
 	u, err := url.Parse(target)
 	if err != nil {
@@ -60,7 +61,7 @@ func Watch(
 		return nil
 	})
 
-	messages := make(chan Message, 1)
+	messages := make(chan []byte, 1)
 	errors := make(chan error, 1)
 	readerDone := make(chan struct{})
 
@@ -100,12 +101,11 @@ func Watch(
 				return
 			}
 
-			var m Message
-
-			err = json.NewDecoder(r).Decode(&m)
+			m, err := ioutil.ReadAll(r)
 			if err != nil {
-				log.Printf("Error in json.NewDecoder(r).Decode(): %v", err)
 				errors <- err
+				log.Printf("Error in ReadAll(): %v", err)
+				return
 				return
 			}
 
@@ -114,4 +114,54 @@ func Watch(
 	}()
 
 	return messages, errors, nil
+}
+
+// This function is like Watch() except if the transport fails, it is
+// automatically retried.
+func RetryingWatch(
+	target string, header http.Header, finish <-chan struct{},
+) (<-chan []byte, <-chan error) {
+
+	outm := make(chan []byte)
+	oute := make(chan error)
+
+	go func() {
+		defer close(outm)
+		defer close(oute)
+
+		for {
+			ms, errs, err := Watch(target, header, finish)
+			if err != nil {
+				oute <- err
+				goto retry
+			}
+
+			log.Printf("Connected to %q", target)
+
+			for m := range ms {
+				outm <- m
+			}
+
+			for err := range errs {
+				oute <- err
+			}
+
+			select {
+			case <-finish:
+				return
+			default:
+			}
+
+		retry:
+			log.Printf("Connection failed. Retrying in 5 seconds.")
+			time.Sleep(5*time.Second + Jitter())
+		}
+	}()
+
+	return outm, oute
+}
+
+// Return a random duration from -1s to +1s
+func Jitter() time.Duration {
+	return time.Duration(rand.Intn(2*int(time.Second))) - 1*time.Second
 }
