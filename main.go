@@ -30,11 +30,13 @@ func main() {
 		cli.StringFlag{
 			Name:   "key",
 			Usage:  "secret known only for hootbot for URL access control",
+			Value:  "<unset>",
 			EnvVar: "HOOKBOT_KEY",
 		},
 		cli.StringFlag{
 			Name:   "github-secret",
 			Usage:  "secret known by github for signing messages",
+			Value:  "<unset>",
 			EnvVar: "HOOKBOT_GITHUB_SECRET",
 		},
 	}
@@ -101,11 +103,10 @@ func main() {
 var SubscribeURIRE = regexp.MustCompile("^(?:/unsafe)?/sub")
 
 func ActionMakeTokens(c *cli.Context) {
-	if !c.GlobalIsSet("key") {
+	key := c.GlobalString("key")
+	if key == "<unset>" {
 		log.Fatalln("HOOKBOT_KEY not set")
 	}
-
-	key := c.GlobalString("key")
 
 	if len(c.Args()) < 1 {
 		cli.ShowSubcommandHelp(c)
@@ -151,11 +152,10 @@ func ActionMakeTokens(c *cli.Context) {
 }
 
 func ActionServe(c *cli.Context) {
-	if !c.GlobalIsSet("key") {
+	key := c.GlobalString("key")
+	if key == "<unset>" {
 		log.Fatalln("HOOKBOT_KEY not set")
 	}
-
-	key := c.GlobalString("key")
 
 	hookbot := NewHookbot(key)
 
