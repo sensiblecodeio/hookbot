@@ -1,4 +1,4 @@
-package main
+package hookbot
 
 import (
 	"testing"
@@ -8,10 +8,10 @@ import (
 // Deliver two messages to two different topics and check they arrive.
 func TestTopicsIndependent(t *testing.T) {
 
-	var c1, c2 chan []byte
+	var c1, c2 chan Message
 
 	func() {
-		hookbot := NewHookbot(TEST_KEY)
+		hookbot := New(TEST_KEY)
 		defer hookbot.Shutdown()
 
 		msgsC1 := hookbot.Add("/unsafe/1")
@@ -25,11 +25,11 @@ func TestTopicsIndependent(t *testing.T) {
 		hookbot.ServeHTTP(MakeRequest("POST", "/unsafe/pub/2", "MESSAGE 2"))
 	}()
 
-	checkDelivered := func(c chan []byte, expected string) {
+	checkDelivered := func(c chan Message, expected string) {
 		select {
 		case m := <-c:
-			if string(m) != expected {
-				t.Errorf("m != %s (=%q)", expected, string(m))
+			if string(m.Body) != expected {
+				t.Errorf("m != %s (=%q)", expected, string(m.Body))
 			}
 		default:
 			t.Fatalf("Message not delivered correctly: %q", expected)
@@ -43,10 +43,10 @@ func TestTopicsIndependent(t *testing.T) {
 // Ensure that messages are delivered to recursive listeners.
 func TestTopicsRecursive(t *testing.T) {
 
-	var c1, c2 chan []byte
+	var c1, c2 chan Message
 
 	func() {
-		hookbot := NewHookbot(TEST_KEY)
+		hookbot := New(TEST_KEY)
 		defer hookbot.Shutdown()
 
 		msgsC1 := hookbot.Add("/unsafe/foo/?recursive")
@@ -63,11 +63,11 @@ func TestTopicsRecursive(t *testing.T) {
 		}
 	}()
 
-	checkDelivered := func(c chan []byte, expected string) bool {
+	checkDelivered := func(c chan Message, expected string) bool {
 		select {
 		case m := <-c:
-			if string(m) != expected {
-				t.Errorf("m != %s (=%q)", expected, string(m))
+			if string(m.Body) != expected {
+				t.Errorf("m != %s (=%q)", expected, string(m.Body))
 			}
 		default:
 			return false
@@ -86,10 +86,10 @@ func TestTopicsRecursive(t *testing.T) {
 // Ensure that messages are not delivered recursively if ?recursive is omitted
 func TestTopicsNotRecursive(t *testing.T) {
 
-	var c1, c2 chan []byte
+	var c1, c2 chan Message
 
 	func() {
-		hookbot := NewHookbot(TEST_KEY)
+		hookbot := New(TEST_KEY)
 		defer hookbot.Shutdown()
 
 		msgsC1 := hookbot.Add("/unsafe/foo/")
@@ -106,11 +106,11 @@ func TestTopicsNotRecursive(t *testing.T) {
 		}
 	}()
 
-	checkDelivered := func(c chan []byte, expected string) bool {
+	checkDelivered := func(c chan Message, expected string) bool {
 		select {
 		case m := <-c:
-			if string(m) != expected {
-				t.Errorf("m != %s (=%q)", expected, string(m))
+			if string(m.Body) != expected {
+				t.Errorf("m != %s (=%q)", expected, string(m.Body))
 			}
 		default:
 			return false

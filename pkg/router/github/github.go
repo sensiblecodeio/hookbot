@@ -12,7 +12,9 @@ import (
 	"strings"
 
 	"github.com/codegangsta/cli"
-	"github.com/scraperwiki/hookbot/listen"
+
+	"github.com/scraperwiki/hookbot/pkg/hookbot"
+	"github.com/scraperwiki/hookbot/pkg/listen"
 )
 
 var RegexParseHeader = regexp.MustCompile("^\\s*([^\\:]+)\\s*:\\s*(.*)$")
@@ -72,11 +74,9 @@ func ActionRoute(c *cli.Context) {
 	outbound := make(chan listen.Message, 1)
 
 	send := func(endpoint string, payload []byte) {
-		log.Printf("TODO(pwaller) transmit to %q", endpoint)
-
 		token := Sha1HMAC(c.GlobalString("key"), []byte(endpoint))
 
-		outURL := fmt.Sprintf("https://%v@%v%v", token, target.Host, endpoint)
+		outURL := fmt.Sprintf("https://%v@%v/pub/%v", token, target.Host, endpoint)
 
 		body := ioutil.NopCloser(bytes.NewBuffer(payload))
 
@@ -189,11 +189,92 @@ func Route(message []byte, send func(string, []byte)) {
 
 	switch event.Type {
 	case "push":
-		urlFmt := "/pub/github.com/repo/%s/push/branch/%s"
-		target := fmt.Sprintf(urlFmt, repo, branch)
-		send(target, msgBytes)
+		topicFmt := "github.com/repo/%s/push/branch/%s"
+		topic := fmt.Sprintf(topicFmt, repo, branch)
+		send(topic, msgBytes)
 	default:
 		log.Printf("Unhandled event type: %v", event.Type)
 		return
 	}
+}
+
+type Router struct{}
+
+func (r *Router) Name() string {
+	return "github"
+}
+
+func (r *Router) Topics() []string {
+	return []string{"/unsafe/github.com/?recursive"}
+}
+
+func (r *Router) Route(in hookbot.Message, publish func(hookbot.Message)) {
+
+	log.Printf("route github: %q", in.Topic)
+
+	type GithubMessage struct {
+		Event, Signature string
+		Payload          []byte
+	}
+
+	var m GithubMessage
+
+	err := json.Unmarshal(in.Body, &m)
+	if err != nil {
+		log.Printf("Failed to unmarshal message in IsValidGithubSignature: %v",
+			err)
+		return
+	}
+
+	var event Event
+	event.Type = m.Event
+
+	err = json.Unmarshal(m.Payload, &event)
+	if err != nil {
+		log.Printf("Route: error in json.Unmarshal: %v", err)
+		return
+	}
+
+	if event.Repository == nil || event.Repository.FullName == "" {
+		log.Printf("Could not identify repository for event %v", event.Type)
+		return
+	}
+
+	repo := event.Repository.FullName
+	branch := event.Branch()
+
+	who := "<unknown>"
+	if event.Pusher != nil {
+		who = event.Pusher.Name
+	}
+
+	msgBytes, err := json.Marshal(map[string]string{
+		"Type":   event.Type,
+		"Repo":   repo,
+		"Branch": branch,
+		"SHA":    event.After,
+		"Who":    who,
+	})
+	if err != nil {
+		log.Printf("Failed to marshal Update: %v", err)
+		return
+	}
+
+	switch event.Type {
+	case "push":
+		topicFmt := "github.com/repo/%s/push/branch/%s"
+
+		publish(hookbot.Message{
+			Topic: fmt.Sprintf(topicFmt, repo, branch),
+			Body:  msgBytes,
+		})
+	default:
+		log.Printf("Unhandled event type: %v", event.Type)
+		return
+	}
+
+}
+
+func init() {
+	hookbot.RegisterRouter(&Router{})
 }
