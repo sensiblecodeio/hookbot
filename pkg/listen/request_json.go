@@ -1,4 +1,4 @@
-package main
+package listen
 
 import (
 	"bytes"
@@ -9,11 +9,23 @@ import (
 	"net/url"
 )
 
-type RequestJSONMarshaller struct {
+type Message struct {
 	*http.Request
 }
 
-func (r RequestJSONMarshaller) MarshalJSON() ([]byte, error) {
+// Read out the full request body and replace it with a buffer
+func (m Message) Payload() ([]byte, error) {
+	body, err := ioutil.ReadAll(m.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	m.Body = ioutil.NopCloser(bytes.NewReader(body))
+
+	return body, err
+}
+
+func (r Message) MarshalJSON() ([]byte, error) {
 
 	asJSON := func(v interface{}) ([]byte, error) {
 		marshalled, err := json.Marshal(v)
@@ -42,26 +54,19 @@ func (r RequestJSONMarshaller) MarshalJSON() ([]byte, error) {
 
 	fmt.Fprint(&buf, `"Body": `) // follows
 
-	if r.Header.Get("Content-Type") == "application/json" {
-		//
-		_, err := buf.ReadFrom(r.Body)
-		if err != nil {
-			err = fmt.Errorf("serialize: error reading request body: %v", err)
-			return nil, err
-		}
-	} else {
-		bs, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			err = fmt.Errorf("serialize: error reading request body: %v", err)
-			return nil, err
-		}
-		bs, err = asJSON(string(bs))
-		if err != nil {
-			err = fmt.Errorf("serialize: error marshalling: %v", err)
-			return nil, err
-		}
-		fmt.Fprintf(&buf, "%s", bs)
+	// Serialize body as JSON
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		err = fmt.Errorf("serialize: error reading request body: %v", err)
+		return nil, err
 	}
+	body, err = asJSON(string(body))
+	if err != nil {
+		err = fmt.Errorf("serialize: error marshalling: %v", err)
+		return nil, err
+	}
+	fmt.Fprintf(&buf, "%s", body)
+
 	r.Body.Close()
 
 	fmt.Fprint(&buf, "}") // close whole document
@@ -69,12 +74,17 @@ func (r RequestJSONMarshaller) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (r RequestJSONMarshaller) UnmarshalJSON(data []byte) error {
+func (r *Message) UnmarshalJSON(data []byte) error {
+
+	if r.Request == nil {
+		r.Request = &http.Request{}
+	}
+
 	type DecodeBuf struct {
 		URL        string
 		RemoteAddr string
 		Header     http.Header
-		Body       interface{}
+		Body       string
 	}
 
 	d := DecodeBuf{}
@@ -83,18 +93,14 @@ func (r RequestJSONMarshaller) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	body, err := json.Marshal(d.Body)
-	if err != nil {
-		return err
-	}
-
 	r.URL, err = url.Parse(d.URL)
 	if err != nil {
 		return fmt.Errorf("error parsing URL %q: %v", d.URL, err)
 	}
+	r.RequestURI = r.URL.RequestURI()
 	r.RemoteAddr = d.RemoteAddr
 	r.Header = d.Header
-	r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+	r.Body = ioutil.NopCloser(bytes.NewBuffer([]byte(d.Body)))
 
 	return nil
 }

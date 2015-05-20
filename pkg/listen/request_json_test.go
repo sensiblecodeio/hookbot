@@ -1,4 +1,4 @@
-package main
+package listen
 
 import (
 	"bytes"
@@ -10,14 +10,14 @@ import (
 func TestRoundtripRequest(t *testing.T) {
 	r, _ := http.NewRequest("GET", "/foo", bytes.NewReader([]byte("MESSAGE")))
 
-	marshalled, err := json.Marshal(RequestJSONMarshaller{r})
+	marshalled, err := json.Marshal(Message{r})
 	if err != nil {
 		t.Fatalf("Error marshalling: %v", err)
 	}
 
 	r = &http.Request{}
 
-	err = json.Unmarshal(marshalled, &RequestJSONMarshaller{r})
+	err = json.Unmarshal(marshalled, &Message{r})
 	if err != nil {
 		t.Fatalf("Error unmarshalling: %v", err)
 	}
