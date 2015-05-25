@@ -120,7 +120,6 @@ func Watch(
 				errors <- err
 				log.Printf("Error in ReadAll(): %v", err)
 				return
-				return
 			}
 
 			select {
