@@ -300,11 +300,27 @@ func (h *Hookbot) ServeSubscribe(conn *websocket.Conn, r *http.Request) {
 		conn.SetWriteDeadline(time.Now().Add(90 * time.Second))
 		err := conn.WriteMessage(websocket.BinaryMessage, message.Body)
 		switch {
-		case err == io.EOF:
+		case err == io.EOF || IsConnectionClose(err):
 			return
 		case err != nil:
 			log.Printf("Error in conn.WriteMessage: %v", err)
 			return
 		}
 	}
+}
+
+func IsConnectionClose(err error) bool {
+	if err == nil {
+		return false
+	}
+	str := err.Error()
+	switch {
+	case strings.HasSuffix(str, "broken pipe"):
+		return true
+	case strings.HasSuffix(str, "connection reset by peer"):
+		return true
+	case strings.HasSuffix(str, "use of closed network connection"):
+		return true
+	}
+	return false
 }
