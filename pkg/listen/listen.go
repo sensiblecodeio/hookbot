@@ -67,7 +67,6 @@ func Watch(
 
 	// Writer goroutine
 	go func() {
-		defer close(messages)
 		defer conn.Close()
 
 		for {
@@ -92,6 +91,7 @@ func Watch(
 	go func() {
 		defer close(readerDone)
 		defer close(errors)
+		defer close(messages)
 
 		for {
 			_, r, err := conn.NextReader()
