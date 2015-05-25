@@ -96,6 +96,13 @@ func Watch(
 		for {
 			_, r, err := conn.NextReader()
 			if err != nil {
+				select {
+				case <-finish:
+					// We've been requested to finish, ignore the error.
+					return
+				default:
+				}
+
 				errors <- err
 				log.Printf("Error in NextReader(): %v", err)
 				return
@@ -103,13 +110,25 @@ func Watch(
 
 			m, err := ioutil.ReadAll(r)
 			if err != nil {
+				select {
+				case <-finish:
+					// We've been requested to finish, ignore the error.
+					return
+				default:
+				}
+
 				errors <- err
 				log.Printf("Error in ReadAll(): %v", err)
 				return
 				return
 			}
 
-			messages <- m
+			select {
+			case messages <- m:
+			case <-finish:
+				return
+			}
+
 		}
 	}()
 
