@@ -189,7 +189,7 @@ func Route(message []byte, send func(string, []byte)) {
 
 	switch event.Type {
 	case "push":
-		topicFmt := "github.com/repo/%s/push/branch/%s"
+		topicFmt := "github.com/repo/%s/branch/%s"
 		topic := fmt.Sprintf(topicFmt, repo, branch)
 		send(topic, msgBytes)
 	default:
@@ -262,7 +262,7 @@ func (r *Router) Route(in hookbot.Message, publish func(hookbot.Message)) {
 
 	switch event.Type {
 	case "push":
-		topicFmt := "github.com/repo/%s/push/branch/%s"
+		topicFmt := "github.com/repo/%s/branch/%s"
 
 		publish(hookbot.Message{
 			Topic: fmt.Sprintf(topicFmt, repo, branch),
