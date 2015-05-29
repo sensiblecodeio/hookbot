@@ -156,9 +156,11 @@ func RetryingWatch(
 
 			log.Printf("Connected to %q", target)
 
-			for m := range ms {
-				outm <- m
-			}
+			go func() {
+				for m := range ms {
+					outm <- m
+				}
+			}()
 
 			for err := range errs {
 				oute <- err
