@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -147,6 +148,9 @@ func RetryingWatch(
 		defer close(outm)
 		defer close(oute)
 
+		var wg sync.WaitGroup
+		defer wg.Wait()
+
 		for {
 			ms, errs, err := Watch(target, header, finish)
 			if err != nil {
@@ -156,7 +160,9 @@ func RetryingWatch(
 
 			log.Printf("Connected to %q", target)
 
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				for m := range ms {
 					outm <- m
 				}
