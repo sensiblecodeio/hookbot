@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -39,6 +40,8 @@ type Hookbot struct {
 	addListener, delListener chan Listener
 
 	routers []Router
+
+	listeners, publish, dropP, sends, dropS int64
 }
 
 func New(key string) *Hookbot {
@@ -69,7 +72,35 @@ func New(key string) *Hookbot {
 	h.wg.Add(1)
 	go h.Loop()
 
+	h.wg.Add(1)
+	go h.ShowStatus(time.Minute)
+
 	return h
+}
+
+func (h *Hookbot) ShowStatus(period time.Duration) {
+	defer h.wg.Done()
+	ticker := time.NewTicker(period)
+	var ll, lp, ls, ldP, ldS int64
+
+	for {
+		select {
+		case <-ticker.C:
+			l := atomic.LoadInt64(&h.listeners)
+			p := atomic.LoadInt64(&h.publish)
+			s := atomic.LoadInt64(&h.sends)
+			dP := atomic.LoadInt64(&h.dropP)
+			dS := atomic.LoadInt64(&h.dropS)
+
+			log.Printf("Listeners %5d [%+5d] pub %5d [%+5d] (d %5d [%+5d])"+
+				" send %8d [%+7d] (d %5d [%+5d])",
+				l, l-ll, p, p-lp, dP, dP-ldP, s, s-ls, dS, dS-ldS)
+
+			ll, lp, ls, ldP, ldS = l, p, s, dP, dS
+		case <-h.shutdown:
+			return
+		}
+	}
 }
 
 var timeout = 1 * time.Second
@@ -142,6 +173,8 @@ func (h *Hookbot) Loop() {
 			}
 
 		case l := <-h.addListener:
+			atomic.AddInt64(&h.listeners, 1)
+
 			if _, ok := listeners[l.Topic]; !ok {
 				listeners[l.Topic] = map[Listener]struct{}{}
 			}
@@ -149,6 +182,8 @@ func (h *Hookbot) Loop() {
 			close(l.ready)
 
 		case l := <-h.delListener:
+			atomic.AddInt64(&h.listeners, -1)
+
 			delete(listeners[l.Topic], l)
 			if len(listeners[l.Topic]) == 0 {
 				delete(listeners, l.Topic)
