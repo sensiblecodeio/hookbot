@@ -208,7 +208,7 @@ func (r *Router) Topics() []string {
 	return []string{"/unsafe/github.com/?recursive"}
 }
 
-func (r *Router) Route(in hookbot.Message, publish func(hookbot.Message)) {
+func (r *Router) Route(in hookbot.Message, publish func(hookbot.Message) bool) {
 
 	log.Printf("route github: %q", in.Topic)
 
@@ -264,7 +264,8 @@ func (r *Router) Route(in hookbot.Message, publish func(hookbot.Message)) {
 	case "push":
 		topicFmt := "github.com/repo/%s/branch/%s"
 
-		publish(hookbot.Message{
+		// May fail
+		_ = publish(hookbot.Message{
 			Topic: fmt.Sprintf(topicFmt, repo, branch),
 			Body:  msgBytes,
 		})

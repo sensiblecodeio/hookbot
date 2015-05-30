@@ -19,13 +19,16 @@ import (
 type Message struct {
 	Topic string
 	Body  []byte
-	Done  chan struct{} // signalled when messages have been strobed
+
+	// Returns true if message is in flight, false if dropped.
+	Sent chan bool // signalled when messages have been strobed
 }
 
 type Listener struct {
 	Topic string
 	c     chan Message
 	ready chan struct{} // closed when c is subscribed
+	dead  chan struct{} // closed when c disconnects
 }
 
 type Hookbot struct {
@@ -103,17 +106,6 @@ func (h *Hookbot) ShowStatus(period time.Duration) {
 	}
 }
 
-var timeout = 1 * time.Second
-
-func TimeoutSend(wg *sync.WaitGroup, c chan<- Message, m Message) {
-	defer wg.Done()
-
-	select {
-	case c <- m:
-	case <-time.After(timeout):
-	}
-}
-
 // Shut down main loop and wait for all in-flight messages to send or timeout
 func (h *Hookbot) Shutdown() {
 	close(h.shutdown)
@@ -129,14 +121,63 @@ func recursive(fullTopic string) (topic string, isRecursive bool) {
 	return fullTopic, false
 }
 
+type MessageListener struct {
+	l Listener
+	m *Message
+}
+
+type MessageListeners struct {
+	interested map[Listener]struct{}
+	m          *Message
+}
+
+const timeout = 1 * time.Second
+
+func (h *Hookbot) TimeoutSendWorker(r chan MessageListener) {
+	for lm := range r {
+		select {
+		case lm.l.c <- *lm.m:
+			atomic.AddInt64(&h.sends, 1)
+		case <-time.After(timeout):
+			atomic.AddInt64(&h.dropS, 1)
+		case <-lm.l.dead:
+			// Listener died.
+		}
+	}
+}
+
 // Manage fanout from h.message onto listeners
 func (h *Hookbot) Loop() {
 	defer h.wg.Done()
 
+	cMessageListener := make(chan MessageListener, 1000)
+	defer close(cMessageListener)
+
+	cMessageListeners := make(chan MessageListeners, 100)
+	defer close(cMessageListeners)
+
+	const W = 10 // Number of worker threads
+	for i := 0; i < W; i++ {
+		h.wg.Add(1)
+		go func() {
+			defer h.wg.Done()
+			h.TimeoutSendWorker(cMessageListener)
+		}()
+	}
+
+	h.wg.Add(1)
+	go func() {
+		defer h.wg.Done()
+		for lms := range cMessageListeners {
+			for l := range lms.interested {
+				cMessageListener <- MessageListener{l, lms.m}
+			}
+		}
+	}()
+
 	listeners := map[string]map[Listener]struct{}{}
 
 	interested := func(topic string) map[Listener]struct{} {
-
 		ls := map[Listener]struct{}{}
 
 		for l := range listeners[topic] {
@@ -163,13 +204,13 @@ func (h *Hookbot) Loop() {
 		select {
 		case m := <-h.message:
 
-			for listener := range interested(m.Topic) {
-				h.wg.Add(1)
-				go TimeoutSend(h.wg, listener.c, m)
-			}
-
-			if m.Done != nil {
-				close(m.Done)
+			select {
+			case cMessageListeners <- MessageListeners{interested(m.Topic), &m}:
+				atomic.AddInt64(&h.publish, 1)
+				m.Sent <- true
+			default:
+				atomic.AddInt64(&h.dropP, 1)
+				m.Sent <- false
 			}
 
 		case l := <-h.addListener:
@@ -202,6 +243,7 @@ func (h *Hookbot) Add(topic string) Listener {
 
 		c:     make(chan Message, 1),
 		ready: ready,
+		dead:  make(chan struct{}),
 	}
 	h.addListener <- l
 	<-ready
@@ -224,6 +266,7 @@ func (h *Hookbot) AddRouter(r Router) {
 }
 
 func (h *Hookbot) Del(l Listener) {
+	close(l.dead)
 	h.delListener <- l
 }
 
@@ -245,8 +288,6 @@ func Topic(r *http.Request) string {
 }
 
 func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
-
-	done := make(chan struct{})
 
 	topic := Topic(r)
 
@@ -288,19 +329,31 @@ func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("Publish %q", topic)
+	// log.Printf("Publish %q", topic)
 
-	h.Publish(Message{Topic: topic, Body: body, Done: done})
+	ok := h.Publish(Message{Topic: topic, Body: body})
+
+	if !ok {
+		http.Error(w, "Timeout in send", http.StatusServiceUnavailable)
+		return
+	}
 
 	fmt.Fprintln(w, "OK")
 }
 
 // Blocks until message has been published.
-func (h *Hookbot) Publish(m Message) {
-	done := make(chan struct{})
-	m.Done = done
-	h.message <- m
-	<-done
+func (h *Hookbot) Publish(m Message) bool {
+	sent := make(chan bool)
+	m.Sent = sent
+
+	select {
+	case h.message <- m:
+	case <-time.After(timeout):
+		atomic.AddInt64(&h.dropP, 1)
+		return false
+	}
+
+	return <-sent
 }
 
 func (h *Hookbot) ServeSubscribe(conn *websocket.Conn, r *http.Request) {
@@ -328,7 +381,6 @@ func (h *Hookbot) ServeSubscribe(conn *websocket.Conn, r *http.Request) {
 		select {
 		case message = <-listener.c:
 		case <-closed:
-			log.Printf("Client disconnected")
 			return
 		}
 
