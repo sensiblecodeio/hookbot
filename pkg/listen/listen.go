@@ -72,7 +72,7 @@ func Watch(
 
 		for {
 			select {
-			case <-time.After(20 * time.Second):
+			case <-time.After(15*time.Second + Jitter(5)):
 				log.Println("Ping")
 				conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 				err := conn.WriteMessage(websocket.PingMessage, []byte{})
@@ -180,7 +180,7 @@ func RetryingWatch(
 
 		retry:
 			log.Printf("Connection failed. Retrying in 5 seconds.")
-			time.Sleep(5*time.Second + Jitter())
+			time.Sleep(5*time.Second + Jitter(1))
 		}
 	}()
 
@@ -188,6 +188,7 @@ func RetryingWatch(
 }
 
 // Return a random duration from -1s to +1s
-func Jitter() time.Duration {
-	return time.Duration(rand.Intn(2*int(time.Second))) - 1*time.Second
+func Jitter(mul int) time.Duration {
+	m := time.Duration(mul)
+	return time.Duration(rand.Intn(int(m*2*time.Second))) - m*1*time.Second
 }
