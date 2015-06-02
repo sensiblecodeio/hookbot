@@ -21,14 +21,14 @@ type Message struct {
 	Body  []byte
 
 	// Returns true if message is in flight, false if dropped.
-	Sent chan bool // signalled when messages have been strobed
+	Sent chan bool // Signalled when messages have been strobed.
 }
 
 type Listener struct {
 	Topic string
 	c     chan Message
-	ready chan struct{} // closed when c is subscribed
-	dead  chan struct{} // closed when c disconnects
+	ready chan struct{} // Closed when c is subscribed.
+	dead  chan struct{} // Closed when c disconnects.
 }
 
 type Hookbot struct {
@@ -44,6 +44,8 @@ type Hookbot struct {
 
 	routers []Router
 
+	// Statistics modified using atomic.AddInt64().
+	// Recorded to the log by ShowStatus().
 	listeners, publish, dropP, sends, dropS int64
 }
 
@@ -67,8 +69,7 @@ func New(key string) *Hookbot {
 	mux.Handle("/pub/", h.KeyChecker(pub))
 
 	mux.Handle("/unsafe/sub/", RequireUnsafeHeader(h.KeyChecker(sub)))
-
-	mux.Handle("/unsafe/pub/", http.HandlerFunc(h.ServePublish))
+	mux.Handle("/unsafe/pub/", pub)
 
 	h.Handler = mux
 
@@ -81,6 +82,8 @@ func New(key string) *Hookbot {
 	return h
 }
 
+// Every `period`, log a status line showing number of connected listeners,
+// dropped messages, etc.
 func (h *Hookbot) ShowStatus(period time.Duration) {
 	defer h.wg.Done()
 	ticker := time.NewTicker(period)
@@ -121,27 +124,41 @@ func recursive(fullTopic string) (topic string, isRecursive bool) {
 	return fullTopic, false
 }
 
+// Represents one {listener, message} pair, which is used for buffering and
+// timing out messages in TimeoutSendWorker.
 type MessageListener struct {
 	l Listener
 	m *Message
 }
 
+// Analogous to MessageListener, but to represent {listeners, message} on a
+// similar worker.
 type MessageListeners struct {
 	interested map[Listener]struct{}
 	m          *Message
 }
 
+// Timeout for a ServeSubscribe to accept a message before it gets dropped.
 const timeout = 1 * time.Second
 
+// The TimeoutSendWorker passes messages from r onto individual listeners.
+// It is responsible for dropping messages if the receiver can't keep up fast
+// enough, or if the receiver disappears.
+// Fun history: we used to spawn a goroutine per message, but this wasted large
+// amounts of memory and performance.
 func (h *Hookbot) TimeoutSendWorker(r chan MessageListener) {
 	for lm := range r {
 		select {
 		case lm.l.c <- *lm.m:
+			// Message successfully handed off to websocket writer.
 			atomic.AddInt64(&h.sends, 1)
+
 		case <-time.After(timeout):
+			// Websocket writer's buffer was full.
 			atomic.AddInt64(&h.dropS, 1)
+
 		case <-lm.l.dead:
-			// Listener died.
+			// Listener went away.
 		}
 	}
 }
@@ -168,6 +185,8 @@ func (h *Hookbot) Loop() {
 	h.wg.Add(1)
 	go func() {
 		defer h.wg.Done()
+
+		// Fanout `cMessageListeners` onto available `TimeoutSendWorker`s
 		for lms := range cMessageListeners {
 			for l := range lms.interested {
 				cMessageListener <- MessageListener{l, lms.m}
@@ -177,6 +196,7 @@ func (h *Hookbot) Loop() {
 
 	listeners := map[string]map[Listener]struct{}{}
 
+	// Determine the set of interested listeners for a given topic.
 	interested := func(topic string) map[Listener]struct{} {
 		ls := map[Listener]struct{}{}
 
@@ -203,17 +223,26 @@ func (h *Hookbot) Loop() {
 	for {
 		select {
 		case m := <-h.message:
+			// Main message send.
 
 			select {
 			case cMessageListeners <- MessageListeners{interested(m.Topic), &m}:
+				// A message making it onto `cMessageListeners` is considered
+				// "sent" in that it has successfully entered the queue to be
+				// sent. It can still be dropped if a receiver is sufficiently
+				// slow to free up buffer space for the message.
 				atomic.AddInt64(&h.publish, 1)
 				m.Sent <- true
 			default:
+				// In this case, the `cMessageListeners` buffer is full.
+				// This can happen if all TimeoutSendWorkers are full and the
+				// `cMessageListeners` channel buffer is also full.
 				atomic.AddInt64(&h.dropP, 1)
 				m.Sent <- false
 			}
 
 		case l := <-h.addListener:
+			// New listener appears
 			atomic.AddInt64(&h.listeners, 1)
 
 			if _, ok := listeners[l.Topic]; !ok {
@@ -223,6 +252,7 @@ func (h *Hookbot) Loop() {
 			close(l.ready)
 
 		case l := <-h.delListener:
+			// Listener disappears
 			atomic.AddInt64(&h.listeners, -1)
 
 			delete(listeners[l.Topic], l)
@@ -231,11 +261,13 @@ func (h *Hookbot) Loop() {
 			}
 
 		case <-h.shutdown:
+			// Signalled to shut down cleanly.
 			return
 		}
 	}
 }
 
+// Return a new Listener which recevies messages for `topic`.
 func (h *Hookbot) Add(topic string) Listener {
 	ready := make(chan struct{})
 	l := Listener{
@@ -265,6 +297,7 @@ func (h *Hookbot) AddRouter(r Router) {
 	}
 }
 
+// Remove `l` from the set of interested listeners.
 func (h *Hookbot) Del(l Listener) {
 	close(l.dead)
 	h.delListener <- l
@@ -287,6 +320,7 @@ func Topic(r *http.Request) string {
 	return topic
 }
 
+// Publish a message via HTTP POST.
 func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 
 	topic := Topic(r)
@@ -356,6 +390,7 @@ func (h *Hookbot) Publish(m Message) bool {
 	return <-sent
 }
 
+// Subscribe to message via HTTP websocket.
 func (h *Hookbot) ServeSubscribe(conn *websocket.Conn, r *http.Request) {
 
 	topic := Topic(r)
