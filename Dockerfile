@@ -23,4 +23,4 @@ RUN go install \
 RUN goupx /go/bin/hookbot
 
 EXPOSE 8080
-CMD hookbot
+ENTRYPOINT hookbot

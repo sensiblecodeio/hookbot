@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -67,7 +68,6 @@ func Watch(
 
 	// Writer goroutine
 	go func() {
-		defer close(messages)
 		defer conn.Close()
 
 		for {
@@ -92,10 +92,18 @@ func Watch(
 	go func() {
 		defer close(readerDone)
 		defer close(errors)
+		defer close(messages)
 
 		for {
 			_, r, err := conn.NextReader()
 			if err != nil {
+				select {
+				case <-finish:
+					// We've been requested to finish, ignore the error.
+					return
+				default:
+				}
+
 				errors <- err
 				log.Printf("Error in NextReader(): %v", err)
 				return
@@ -103,13 +111,24 @@ func Watch(
 
 			m, err := ioutil.ReadAll(r)
 			if err != nil {
+				select {
+				case <-finish:
+					// We've been requested to finish, ignore the error.
+					return
+				default:
+				}
+
 				errors <- err
 				log.Printf("Error in ReadAll(): %v", err)
 				return
+			}
+
+			select {
+			case messages <- m:
+			case <-finish:
 				return
 			}
 
-			messages <- m
 		}
 	}()
 
@@ -129,6 +148,9 @@ func RetryingWatch(
 		defer close(outm)
 		defer close(oute)
 
+		var wg sync.WaitGroup
+		defer wg.Wait()
+
 		for {
 			ms, errs, err := Watch(target, header, finish)
 			if err != nil {
@@ -138,9 +160,13 @@ func RetryingWatch(
 
 			log.Printf("Connected to %q", target)
 
-			for m := range ms {
-				outm <- m
-			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for m := range ms {
+					outm <- m
+				}
+			}()
 
 			for err := range errs {
 				oute <- err
