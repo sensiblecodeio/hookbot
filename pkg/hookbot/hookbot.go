@@ -170,6 +170,11 @@ func (h *Hookbot) Loop() {
 	cMessageListener := make(chan MessageListener, 1000)
 	defer close(cMessageListener)
 
+	// Wait for the cMessageListeners goroutine to finish before closing
+	// cMessageListener
+	var wgMessageListeners sync.WaitGroup
+	defer wgMessageListeners.Wait()
+
 	cMessageListeners := make(chan MessageListeners, 100)
 	defer close(cMessageListeners)
 
@@ -182,9 +187,9 @@ func (h *Hookbot) Loop() {
 		}()
 	}
 
-	h.wg.Add(1)
+	wgMessageListeners.Add(1)
 	go func() {
-		defer h.wg.Done()
+		defer wgMessageListeners.Done()
 
 		// Fanout `cMessageListeners` onto available `TimeoutSendWorker`s
 		for lms := range cMessageListeners {
