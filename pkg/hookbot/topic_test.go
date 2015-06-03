@@ -16,8 +16,6 @@ func TestTopicsIndependent(t *testing.T) {
 
 		msgsC1 := hookbot.Add("/unsafe/1")
 		msgsC2 := hookbot.Add("/unsafe/2")
-		defer hookbot.Del(msgsC1)
-		defer hookbot.Del(msgsC2)
 
 		c1, c2 = msgsC1.c, msgsC2.c
 
@@ -51,8 +49,6 @@ func TestTopicsRecursive(t *testing.T) {
 
 		msgsC1 := hookbot.Add("/unsafe/foo/?recursive")
 		msgsC2 := hookbot.Add("/unsafe/foo/bar")
-		defer hookbot.Del(msgsC1)
-		defer hookbot.Del(msgsC2)
 
 		c1, c2 = msgsC1.c, msgsC2.c
 
@@ -94,8 +90,6 @@ func TestTopicsNotRecursive(t *testing.T) {
 
 		msgsC1 := hookbot.Add("/unsafe/foo/")
 		msgsC2 := hookbot.Add("/unsafe/foo/bar")
-		defer hookbot.Del(msgsC1)
-		defer hookbot.Del(msgsC2)
 
 		c1, c2 = msgsC1.c, msgsC2.c
 

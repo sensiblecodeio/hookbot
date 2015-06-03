@@ -88,7 +88,6 @@ func TestUnsafePub(t *testing.T) {
 			defer hookbot.Shutdown()
 
 			msgs := hookbot.Add("/unsafe/")
-			defer hookbot.Del(msgs)
 			c = msgs.c
 
 			w, r := MakeRequest("POST", "/unsafe/pub/", "MESSAGE")

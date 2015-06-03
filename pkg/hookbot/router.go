@@ -9,7 +9,7 @@ import (
 type Router interface {
 	Name() string
 	Topics() []string
-	Route(in Message, publish func(Message))
+	Route(in Message, publish func(Message) bool)
 }
 
 var availableRouters []Router
