@@ -368,7 +368,7 @@ func (h *Hookbot) ServePublish(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// log.Printf("Publish %q", topic)
+	log.Printf("Publish %q", topic)
 
 	ok := h.Publish(Message{Topic: topic, Body: body})
 
