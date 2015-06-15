@@ -37,9 +37,17 @@ func Watch(
 	}
 
 	if u.User != nil {
+		oldHeader := header
+
+		// Avoid modifying caller's headers
+		header = http.Header{}
+		for k, v := range oldHeader {
+			header[k] = v
+		}
+
 		userPassBytes := []byte(u.User.String() + ":")
 		token := base64.StdEncoding.EncodeToString(userPassBytes)
-		header.Add("Authorization", fmt.Sprintf("Basic %v", token))
+		header.Set("Authorization", fmt.Sprintf("Basic %v", token))
 		u.User = nil
 	}
 
