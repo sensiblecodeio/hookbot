@@ -23,7 +23,7 @@ func main() {
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:   "key",
-			Usage:  "secret known only for hootbot for URL access control",
+			Usage:  "secret known only for hookbot for URL access control",
 			Value:  "<unset>",
 			EnvVar: "HOOKBOT_KEY",
 		},
