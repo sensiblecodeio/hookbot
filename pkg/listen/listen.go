@@ -65,7 +65,6 @@ func Watch(
 
 	conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {
-		log.Println("Pong")
 		conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
@@ -81,7 +80,6 @@ func Watch(
 		for {
 			select {
 			case <-time.After(15*time.Second + Jitter(5)):
-				log.Println("Ping")
 				conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 				err := conn.WriteMessage(websocket.PingMessage, []byte{})
 				if err != nil {
