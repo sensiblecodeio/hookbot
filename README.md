@@ -28,7 +28,7 @@ a public TCP interface.
 Why use hookbot?
 ----------------
 
-Hookbot is a server makes it so that you can listen on a public port for
+Hookbot is a server which makes it so that you can listen on a public port for
 webhooks in one place.
 
 Any applications wanting to listen to the webhooks can make an outbound websocket
