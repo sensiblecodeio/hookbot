@@ -18,9 +18,9 @@ or deploys software when it is updated.
 
 ## The problem with web hooks
 
-The problem with webhooks is that it requires that the receiver of the hook listens on
-a port accessible to the publisher, and that the publisher must be configured to publish
-to every listener. In a cloud environment this can be inconvenient, as there may be
+Webhooks require that the receiver of the hook listens on a port accessible
+to the publisher, and that the publisher must be configured to publish to
+every listener. In a cloud environment this can be inconvenient, as there may be
 many receivers interested in an event, and it may not be desirable to poke holes in a
 the firewall for them. In a development environment it may not be easy to listen on
 a public TCP interface.
@@ -46,8 +46,6 @@ connection to a `/sub/` URI and reading messages from it.
 The authentication is a hmac of a single secret with the URI, so a token used for
 publishing is different from the one for listening; tokens are also different
 between separate channels. The single secret is only known by the server.
-
-Hookbot is licensed under a BSD like license.
 
 Hookbot is an easy-to-run portable go server. It just needs the `HOOKBOT_KEY`
 variable setting, for example like so:
@@ -150,8 +148,12 @@ from one channel onto other channels.
 
 For example, let's say `scraperwiki/hookbot`'s `master` branch is updated.
 
-The `/unsafe/pub/github.com/org/scraperwiki?extra-metadata=github` channel recieves
+The `/unsafe/pub/github.com/org/scraperwiki?extra-metadata=github` channel receives
 an event. In the payload of the event, the target repository is mentioned, so
 a router
 ([such as this github router](https://github.com/scraperwiki/hookbot/blob/03f7430da914ee6bbebfa264ecddc8b683d52a06/pkg/router/github/github.go#L192))
 can authenticate and rebroadcast the message to `/sub/github.com/repo/scraperwiki/hookbot`.
+
+# License
+
+Hookbot is licensed under a BSD-like license.
