@@ -16,9 +16,14 @@ such as when a branch is pushed to.
 This is useful for creating a continuous deployment infrastructure, which runs tests
 or deploys software when it is updated.
 
+## The problem with web hooks
+
 The problem with webhooks is that it requires that the receiver of the hook listens on
 a port accessible to the publisher, and that the publisher must be configured to publish
-to every listener.
+to every listener. In a cloud environment this can be inconvenient, as there may be
+many receivers interested in an event, and it may not be desirable to poke holes in a
+the firewall for them. In a development environment it may not be easy to listen on
+a public TCP interface.
 
 Why use hookbot?
 ----------------
