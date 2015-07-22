@@ -61,6 +61,44 @@ Release binaries [are hosted on github](https://github.com/scraperwiki/hookbot/r
 
 If you're a ScraperWiki employee, you can use https://hookbot.scraperwiki.com.
 
+## How do I listen to events
+
+You can listen to events by making a websocket connection to a `/sub/` URL.
+
+This can be done with [`wscat`](https://github.com/pwaller/wscat/releases), for example:
+
+```
+$ wscat wss://token@hookbot.scraperwiki.com/sub/foo/bar
+EVENT!
+```
+
+If you are writing go code, for convenience a
+[`listen` package is included](https://godoc.org/github.com/scraperwiki/hookbot/pkg/listen).
+This includes a `RetryingWatch` function which returns events.
+
+A brief example is below, or [a more complete example](https://github.com/scraperwiki/hanoverd/blob/fcfb97f00a4435eb7d420d75e05ecceb88b27e80/main.go#L322)
+can be seen in the [hanoverd](https://github.com/scraperwiki/hanoverd/) project.
+
+```golang
+	finish := make(chan struct{})
+	header := http.Header{}
+	events, errs := listen.RetryingWatch("wss://hmac-token@hookbot/sub/github.com/repo/scraperwiki/hookbot", header, finish)
+
+	go func() {
+		defer close(finish)
+
+		for err := range errs {
+			log.Printf("Error in hookbot event stream: %v", err)
+		}
+	}()
+	
+	for payload := range events {
+		log.Printf("Signalled via hookbot, content of payload:")
+		log.Printf("%s", payload)
+	}
+```
+
+
 Generating tokens
 -----------------
 
