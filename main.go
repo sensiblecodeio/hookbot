@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/codegangsta/cli"
 
@@ -139,6 +140,10 @@ func ActionMakeTokens(c *cli.Context) {
 	}
 
 	for _, arg := range c.Args() {
+		if !strings.HasPrefix(arg, "/") {
+			log.Fatalf("URI must start with /, got: %q", arg)
+		}
+
 		mac := hookbot.Sha1HMAC(key, arg)
 		if c.Bool("bare") {
 			fmt.Println(mac)
