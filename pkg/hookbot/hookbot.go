@@ -425,16 +425,15 @@ func (h *Hookbot) ServeSubscribe(conn *websocket.Conn, r *http.Request) {
 
 		conn.SetWriteDeadline(time.Now().Add(90 * time.Second))
 		_, isRecursive := recursive(topic)
-		err := error(nil)
+		msgBytes := []byte{}
 		if isRecursive {
-			topicMsg := []byte{}
-			topicMsg = append(topicMsg, message.Topic...)
-			topicMsg = append(topicMsg, '\x00')
-			topicMsg = append(topicMsg, message.Body...)
-			err = conn.WriteMessage(websocket.BinaryMessage, topicMsg)
+			msgBytes = append(msgBytes, message.Topic...)
+			msgBytes = append(msgBytes, '\x00')
+			msgBytes = append(msgBytes, message.Body...)
 		} else {
-			err = conn.WriteMessage(websocket.BinaryMessage, message.Body)
+			msgBytes = message.Body
 		}
+		err := conn.WriteMessage(websocket.BinaryMessage, msgBytes)
 		switch {
 		case err == io.EOF || IsConnectionClose(err):
 			return
