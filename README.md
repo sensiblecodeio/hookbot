@@ -110,8 +110,25 @@ https://2e1150434ba1d8c33bce7c82ee08b5d9850342c7@hookbot.scraperwiki.com/pub/foo
 The `HOOKBOT_KEY` should be kept secret and the authentication token is derived
 from it using a [HMAC](https://en.wikipedia.org/w/HMAC).
 
-Hookbot URLs
-------------
+Listening to multiple endpoints
+-------------------------------
+
+You can listen to all endpoints below a particular point in the hierarchy: ensure your
+path ends with `/` then append `?recursive`
+
+```
+hookbot make-tokens /sub/foo/?recursive
+ws://c0..9f@localhost:8080/sub/foo/%3Frecursive
+```
+
+Note that the output URL contains an URL-escape encoded question mark: this is *not* a query parameter.
+
+As shown above, the token is calculated *including* the `?recursive` option.
+
+You will receive the path the message was published on (i.e. the topic `foo/bar/baz`) followed by a NUL byte, followed by the message. (Note the absence of a leading `/pub/` or `/sub/`.)
+
+Unsafe URLs
+-----------
 
 In addition to `/pub/` and `/sub/`, there is also `/unsafe/pub/` and `/unsafe/sub/`.
 The unsafe pub URL can be published to without supplying an authentication token,
