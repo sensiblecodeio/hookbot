@@ -397,7 +397,6 @@ func (h *Hookbot) Publish(m Message) bool {
 
 // Subscribe to message via HTTP websocket.
 func (h *Hookbot) ServeSubscribe(conn *websocket.Conn, r *http.Request) {
-
 	topic := Topic(r)
 
 	listener := h.Add(topic)
@@ -425,7 +424,16 @@ func (h *Hookbot) ServeSubscribe(conn *websocket.Conn, r *http.Request) {
 		}
 
 		conn.SetWriteDeadline(time.Now().Add(90 * time.Second))
-		err := conn.WriteMessage(websocket.BinaryMessage, message.Body)
+		_, isRecursive := recursive(topic)
+		msgBytes := []byte{}
+		if isRecursive {
+			msgBytes = append(msgBytes, message.Topic...)
+			msgBytes = append(msgBytes, '\x00')
+			msgBytes = append(msgBytes, message.Body...)
+		} else {
+			msgBytes = message.Body
+		}
+		err := conn.WriteMessage(websocket.BinaryMessage, msgBytes)
 		switch {
 		case err == io.EOF || IsConnectionClose(err):
 			return
