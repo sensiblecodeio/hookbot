@@ -107,7 +107,8 @@ func (h *Hookbot) KeyChecker(wrapped http.Handler) http.HandlerFunc {
 		}
 
 		if !h.IsKeyOK(w, r) {
-			http.NotFound(w, r)
+			w.Header().Add("WWW-Authenticate", `Basic realm="hookbot"`)
+			http.Error(w, "401 Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
