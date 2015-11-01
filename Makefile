@@ -11,6 +11,7 @@ run: build
 		hookbot
 
 build:
+	go generate -v
 	@docker build -t hookbot .
 
 .PHONY: run build
