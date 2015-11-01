@@ -33,7 +33,7 @@ func TestAuthMissingFail(t *testing.T) {
 		hookbot.ServeHTTP(w, r)
 	}()
 
-	if w.Code != http.StatusNotFound {
+	if w.Code != http.StatusUnauthorized {
 		t.Errorf("Status code != 404 (= %v)", w.Code)
 	}
 }
@@ -52,7 +52,7 @@ func TestAuthInvalidSecret(t *testing.T) {
 		hookbot.ServeHTTP(w, r)
 	}()
 
-	if w.Code != http.StatusNotFound {
+	if w.Code != http.StatusUnauthorized {
 		t.Errorf("Status code != 404 (= %v)", w.Code)
 	}
 }
