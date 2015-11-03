@@ -76,6 +76,45 @@ func TestAuthSuccess(t *testing.T) {
 	}
 }
 
+// Valid secret authentication should return 200 OK
+func TestAuthSuccessSubstring(t *testing.T) {
+	w, r := MakeRequest("POST", "/pub/place/sub/sub/sub", "MESSAGE")
+
+	token := Sha1HMAC(TEST_KEY, "/pub/place/")
+	r.SetBasicAuth(token, "")
+
+	func() {
+		hookbot := New(TEST_KEY)
+		defer hookbot.Shutdown()
+
+		hookbot.ServeHTTP(w, r)
+	}()
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status code != 200 (= %v)", w.Code)
+	}
+}
+
+// Failed secret authentication should not return 200 OK
+// Fails because po is not a entire step upwards from pub/post
+func TestAuthFailSubstring(t *testing.T) {
+	w, r := MakeRequest("POST", "/pub/post", "MESSAGE")
+
+	token := Sha1HMAC(TEST_KEY, "/pub/po")
+	r.SetBasicAuth(token, "")
+
+	func() {
+		hookbot := New(TEST_KEY)
+		defer hookbot.Shutdown()
+
+		hookbot.ServeHTTP(w, r)
+	}()
+
+	if w.Code == http.StatusOK {
+		t.Errorf("Status code == 200 (= %v)", w.Code)
+	}
+}
+
 // Unsafe pub should always succeed, without credentials
 func TestUnsafePub(t *testing.T) {
 

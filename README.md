@@ -110,6 +110,14 @@ https://2e1150434ba1d8c33bce7c82ee08b5d9850342c7@hookbot.scraperwiki.com/pub/foo
 The `HOOKBOT_KEY` should be kept secret and the authentication token is derived
 from it using a [HMAC](https://en.wikipedia.org/w/HMAC).
 
+Wider scope for publication keys
+--------------------------------
+
+If you have a valid key for `/pub/foo/`, you can also use that key
+to publish to `/pub/foo/bar/baz` etc. Only `/` terminated substrings (and the
+original string itself) are considered when looking for a match; so a valid 
+key for `/pub/foo` is only valid for that particular topic.
+
 Listening to multiple endpoints
 -------------------------------
 

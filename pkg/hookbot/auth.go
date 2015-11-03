@@ -23,6 +23,21 @@ func SecureEqual(x, y string) bool {
 	return false
 }
 
+func subpaths(s string) []string {
+	// Return all subpaths terminating in a "/" and itself.
+	// i.e. foo/bar/baz returns foo/ foo/bar/ and foo/bar/baz
+	// Happens to return itself twice if it ends in a /
+	slashes := strings.SplitAfter(s, "/")
+	output := []string{}
+	for i, _ := range slashes {
+		output = append(
+			output,
+			strings.Join(slashes[0:i+1], ""),
+		)
+	}
+	return output
+}
+
 func (h *Hookbot) IsKeyOK(w http.ResponseWriter, r *http.Request) bool {
 
 	authorization := r.Header.Get("Authorization")
@@ -50,13 +65,14 @@ func (h *Hookbot) IsKeyOK(w http.ResponseWriter, r *http.Request) bool {
 		givenMac = givenKey // No processing required
 	}
 
-	expectedMac := Sha1HMAC(h.key, r.URL.Path)
-
-	if !SecureEqual(givenMac, expectedMac) {
-		return false
+	for _, subpath := range subpaths(r.URL.Path) {
+		expectedMac := Sha1HMAC(h.key, subpath)
+		if SecureEqual(givenMac, expectedMac) {
+			return true
+		}
 	}
 
-	return true
+	return false
 }
 
 var UnsafeURI = regexp.MustCompile("^/unsafe/(pub|sub)/.*")
