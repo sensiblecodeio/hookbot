@@ -73,26 +73,27 @@ func ActionRoute(c *cli.Context) {
 
 	outbound := make(chan listen.Message, 1)
 
-	send := func(endpoint string, payload []byte) {
-		token := Sha1HMAC(c.GlobalString("key"), []byte(endpoint))
+	publish := func(m hookbot.Message) bool {
+		token := Sha1HMAC(c.GlobalString("key"), []byte(m.Topic))
 
-		outURL := fmt.Sprintf("https://%v@%v/pub/%v", token, target.Host, endpoint)
+		outURL := fmt.Sprintf("https://%v@%v/pub/%s", token, target.Host, m.Topic)
 
-		body := ioutil.NopCloser(bytes.NewBuffer(payload))
+		body := ioutil.NopCloser(bytes.NewBuffer(m.Body))
 
 		out, err := http.NewRequest("POST", outURL, body)
 		if err != nil {
 			log.Printf("Failed to construct outbound req: %v", err)
-			return
+			return false
 		}
 		out.SetBasicAuth(token, "")
 
 		resp, err := http.DefaultClient.Do(out)
 		if err != nil {
 			log.Printf("Failed to transmit: %v", err)
-			return
+			return false
 		}
 		log.Printf("Transmit: %v %v", resp.StatusCode, outURL)
+		return true
 	}
 
 	go func() {
@@ -101,14 +102,22 @@ func ActionRoute(c *cli.Context) {
 		}
 	}()
 
-	for m := range messages {
+	router := &Router{}
+
+	for mBytes := range messages {
 		log.Printf("Receive message")
-		if !IsValidGithubSignature(c.GlobalString("github-secret"), m) {
+
+		parts := bytes.Split(mBytes, []byte{0})
+		topic := parts[0]
+		body := parts[1]
+
+		if !IsValidGithubSignature(c.GlobalString("github-secret"), body) {
 			log.Printf("Reject github signature")
 			continue
 		}
 
-		Route(m, send)
+		m := hookbot.Message{Topic: string(topic), Body: body}
+		router.Route(m, publish)
 	}
 	close(outbound)
 }
@@ -135,67 +144,6 @@ type Pusher struct {
 
 type Repository struct {
 	FullName string `json:"full_name"`
-}
-
-func Route(message []byte, send func(string, []byte)) {
-
-	type GithubMessage struct {
-		Event, Signature string
-		Payload          []byte
-	}
-
-	var m GithubMessage
-
-	err := json.Unmarshal(message, &m)
-	if err != nil {
-		log.Printf("Failed to unmarshal message in IsValidGithubSignature: %v",
-			err)
-		return
-	}
-
-	var event Event
-	event.Type = m.Event
-
-	err = json.Unmarshal(m.Payload, &event)
-	if err != nil {
-		log.Printf("Route: error in json.Unmarshal: %v", err)
-		return
-	}
-
-	if event.Repository == nil || event.Repository.FullName == "" {
-		log.Printf("Could not identify repository for event %v", event.Type)
-		return
-	}
-
-	repo := event.Repository.FullName
-	branch := event.Branch()
-
-	who := "<unknown>"
-	if event.Pusher != nil {
-		who = event.Pusher.Name
-	}
-
-	msgBytes, err := json.Marshal(map[string]string{
-		"Type":   event.Type,
-		"Repo":   repo,
-		"Branch": branch,
-		"SHA":    event.After,
-		"Who":    who,
-	})
-	if err != nil {
-		log.Printf("Failed to marshal Update: %v", err)
-		return
-	}
-
-	switch event.Type {
-	case "push":
-		topicFmt := "github.com/repo/%s/branch/%s"
-		topic := fmt.Sprintf(topicFmt, repo, branch)
-		send(topic, msgBytes)
-	default:
-		log.Printf("Unhandled event type: %v", event.Type)
-		return
-	}
 }
 
 type Router struct{}
