@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"strings"
 
 	"github.com/codegangsta/cli"
 
@@ -122,8 +121,7 @@ func ActionMakeTokens(c *cli.Context) {
 
 	initialScheme := u.Scheme
 
-	getScheme := func(target string) string {
-
+	getScheme := func(initialScheme, target string) string {
 		scheme := "http"
 
 		secure := "" // if https or wss, "s", "" otherwise.
@@ -140,17 +138,34 @@ func ActionMakeTokens(c *cli.Context) {
 	}
 
 	for _, arg := range c.Args() {
-		if !strings.HasPrefix(arg, "/") {
-			log.Fatalf("URI must start with /, got: %q", arg)
+		argURL, err := url.Parse(arg)
+		if err != nil {
+			log.Fatalln("URL %q doesn't parse: %v", arg, err)
 		}
 
-		mac := hookbot.Sha1HMAC(key, arg)
+		mac := hookbot.Sha1HMAC(key, argURL.Path)
 		if c.Bool("bare") {
 			fmt.Println(mac)
 		} else {
-			u.Scheme = getScheme(arg)
+			s := initialScheme
+			if argURL.Scheme != "" {
+				// If the arg specifies a scheme, it overrides
+				// the base scheme.
+				s = argURL.Scheme
+			}
+			u.Scheme = getScheme(s, argURL.Path)
+
 			u.User = url.User(mac)
-			u.Path = arg
+			if argURL.Host != "" {
+				// If the argument uses a new host, use that one.
+				u.Host = argURL.Host
+			}
+
+			// Preserve the original path, query and fragment.
+			u.Path = argURL.Path
+			u.RawQuery = argURL.RawQuery
+			u.Fragment = argURL.Fragment
+
 			fmt.Println(u)
 		}
 	}
