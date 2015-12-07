@@ -1,16 +1,22 @@
-hookbot: build
-	@docker run --rm --entrypoint=cat hookbot /go/bin/hookbot > hookbot
-	chmod +x hookbot
+all: hookbot
 
-run: build
-	-docker run --tty --interactive --rm \
-		--publish=8080:8080 \
-		--env=HOOKBOT_KEY=test \
-		--env=HOOKBOT_GITHUB_SECRET=test \
-		--name=hookbot \
-		hookbot
+# So that make knows about hookbot's other dependencies.
+-include hookbot.deps
 
-build:
-	@docker build -t hookbot .
+# Compute a file that looks like "hookbot: file.go" for all go source files
+# that hookbot depends on.
+hookbot.deps:
+	./generate-deps.sh hookbot . > $@
 
-.PHONY: run build
+hookbot: hookbot.deps Dockerfile
+	git submodule update --init
+	docker build -t scraperwiki/hookbot .
+	docker create --name hookbot-tmp scraperwiki/hookbot
+	docker cp hookbot-tmp:/go/bin/hookbot .
+	docker rm hookbot-tmp
+	chmod +x ./hookbot
+
+# GNU Make instructions
+.PHONY:
+# Required for hanoverd.deps
+.DELETE_ON_ERROR:
