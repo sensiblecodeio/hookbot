@@ -65,14 +65,28 @@ func (h *Hookbot) IsKeyOK(w http.ResponseWriter, r *http.Request) bool {
 		givenMac = givenKey // No processing required
 	}
 
+	// Try all subpaths and see if any of them matches the given MAC.
 	for _, subpath := range subpaths(r.URL.Path) {
 		expectedMac := Sha1HMAC(h.key, subpath)
+		if SecureEqual(givenMac, expectedMac) {
+			return true
+		}
+
+		// See if HMAC matches the URL without the {/pub,/sub} prefix.
+		// These tokens are valid for both pub and sub.
+		expectedMac = Sha1HMAC(h.key, noPrefix(subpath))
 		if SecureEqual(givenMac, expectedMac) {
 			return true
 		}
 	}
 
 	return false
+}
+
+func noPrefix(withPrefix string) string {
+	withPrefix = strings.TrimPrefix(withPrefix, "/pub")
+	withPrefix = strings.TrimPrefix(withPrefix, "/sub")
+	return withPrefix
 }
 
 var UnsafeURI = regexp.MustCompile("^/unsafe/(pub|sub)/.*")
