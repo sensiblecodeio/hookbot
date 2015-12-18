@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,6 +35,16 @@ func Watch(
 	u, err := url.Parse(target)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	if strings.HasPrefix(u.Path, "/xub/") {
+		u.Path = "/sub/" + strings.TrimPrefix(u.Path, "/xub/")
+		switch u.Scheme {
+		case "http":
+			u.Scheme = "ws"
+		case "https":
+			u.Scheme = "wss"
+		}
 	}
 
 	if u.User != nil {
