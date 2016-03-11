@@ -76,6 +76,44 @@ func TestAuthSuccess(t *testing.T) {
 	}
 }
 
+// TestAuthPubSub checks that a secret created with no pub/sub is valid for both.
+func TestAuthPubSub(t *testing.T) {
+
+	// Valid for both pub and sub, for lack of {/pub,/sub} prefix
+	token := Sha1HMAC(TEST_KEY, "/place")
+
+	w, r := MakeRequest("POST", "/pub/place", "MESSAGE")
+	r.SetBasicAuth(token, "")
+
+	func() {
+		hookbot := New(TEST_KEY)
+		defer hookbot.Shutdown()
+		hookbot.ServeHTTP(w, r)
+	}()
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status code != 200 (= %v)", w.Code)
+	}
+
+	w, r = MakeRequest("GET", "/sub/place", "")
+	r.SetBasicAuth(token, "")
+
+	func() {
+		hookbot := New(TEST_KEY)
+		defer hookbot.Shutdown()
+		hookbot.ServeHTTP(w, r)
+	}()
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Status code != 400 (= %v)", w.Code)
+	}
+
+	response := string(w.Body.Bytes())
+	if response != "Bad Request\n" {
+		t.Errorf("Response body incorrect, got: %q", response)
+	}
+}
+
 // Valid secret authentication should return 200 OK
 func TestAuthSuccessSubstring(t *testing.T) {
 	w, r := MakeRequest("POST", "/pub/place/sub/sub/sub", "MESSAGE")
