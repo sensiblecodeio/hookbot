@@ -21,11 +21,11 @@ type ErrConnectionFail struct {
 }
 
 func (e *ErrConnectionFail) Error() string {
-	var status *int
+	err := e.err
 	if e.resp != nil {
-		status = &e.resp.StatusCode
+		err = fmt.Errorf("%v: response: %v", err, e.resp.Status)
 	}
-	return fmt.Sprintf("connection failure (status %v): %v", status, e.err)
+	return fmt.Sprintf("failed: %v", err)
 }
 
 func Watch(
