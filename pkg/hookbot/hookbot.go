@@ -71,6 +71,8 @@ func New(key string) *Hookbot {
 	mux.Handle("/unsafe/sub/", RequireUnsafeHeader(h.KeyChecker(sub)))
 	mux.Handle("/unsafe/pub/", pub)
 
+	mux.Handle("/", h.KeyChecker(h.BothPubSub(pub, sub)))
+
 	h.Handler = mux
 
 	h.wg.Add(1)
@@ -80,6 +82,18 @@ func New(key string) *Hookbot {
 	go h.ShowStatus(time.Minute)
 
 	return h
+}
+
+// BothPubSub is an endpoint which supports either publishing or subscribing.
+// If it is a POST request, it is publishing, otherwise it is subscribing.
+func (h *Hookbot) BothPubSub(pub, sub http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			pub.ServeHTTP(w, r)
+			return
+		}
+		sub.ServeHTTP(w, r)
+	})
 }
 
 // Every `period`, log a status line showing number of connected listeners,
@@ -310,16 +324,20 @@ func (h *Hookbot) Del(l Listener) {
 
 // The topic is everything after the "/pub/" or "/sub/"
 // Do not capture the "/unsafe". See note in `Topic()`.
-var TopicRE *regexp.Regexp = regexp.MustCompile("^(?:/unsafe)?/[^/]+/(.*)$")
+var TopicRE *regexp.Regexp = regexp.MustCompile("^(?:/unsafe)?/(?:pub|sub)/(.*)$")
 
 func Topic(r *http.Request) string {
+	if !TopicRE.MatchString(r.URL.Path) {
+		// No match. (pub/sub) not specified.
+		// The whole URI (minus leading /) is the topic.
+		return strings.TrimPrefix(r.URL.Path, "/")
+	}
 	m := TopicRE.FindStringSubmatch(r.URL.Path)
 	if m == nil {
 		return ""
 	}
 	topic := m[1]
 	if IsUnsafeRequest(r) {
-
 		return "/unsafe/" + topic
 	}
 	return topic
