@@ -79,7 +79,7 @@ func TestTopicsRecursive(t *testing.T) {
 	}
 }
 
-// Ensure that messages are not delivered recursively if ?recursive is omitted
+// Ensure that messages are not delivered recursively for topics not ending in /.
 func TestTopicsNotRecursive(t *testing.T) {
 
 	var c1, c2 chan Message
