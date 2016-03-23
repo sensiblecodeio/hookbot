@@ -118,9 +118,16 @@ func (h *Hookbot) Shutdown() {
 // Returns "true" if fullTopic ends with `?recursive` and returns topic name
 // without `?recursive` suffix.
 func recursive(fullTopic string) (topic string, isRecursive bool) {
+	// Legacy: topics ending in ?recursive are recursive.
 	if strings.HasSuffix(fullTopic, "?recursive") {
 		return fullTopic[:len(fullTopic)-len("?recursive")], true
 	}
+
+	// Topics ending in "/" are recursive
+	if strings.HasSuffix(fullTopic, "/") {
+		return fullTopic, true
+	}
+
 	return fullTopic, false
 }
 
