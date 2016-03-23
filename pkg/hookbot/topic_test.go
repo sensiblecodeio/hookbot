@@ -47,7 +47,7 @@ func TestTopicsRecursive(t *testing.T) {
 		hookbot := New(TEST_KEY)
 		defer hookbot.Shutdown()
 
-		msgsC1 := hookbot.Add("/unsafe/foo/?recursive")
+		msgsC1 := hookbot.Add("/unsafe/foo/")
 		msgsC2 := hookbot.Add("/unsafe/foo/bar")
 
 		c1, c2 = msgsC1.c, msgsC2.c
@@ -88,7 +88,7 @@ func TestTopicsNotRecursive(t *testing.T) {
 		hookbot := New(TEST_KEY)
 		defer hookbot.Shutdown()
 
-		msgsC1 := hookbot.Add("/unsafe/foo/")
+		msgsC1 := hookbot.Add("/unsafe/foo")
 		msgsC2 := hookbot.Add("/unsafe/foo/bar")
 
 		c1, c2 = msgsC1.c, msgsC2.c
