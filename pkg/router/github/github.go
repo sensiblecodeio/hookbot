@@ -153,7 +153,7 @@ func (r *Router) Name() string {
 }
 
 func (r *Router) Topics() []string {
-	return []string{"/unsafe/github.com/?recursive"}
+	return []string{"/unsafe/github.com/"}
 }
 
 func (r *Router) Route(in hookbot.Message, publish func(hookbot.Message) bool) {

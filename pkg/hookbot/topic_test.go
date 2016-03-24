@@ -47,7 +47,7 @@ func TestTopicsRecursive(t *testing.T) {
 		hookbot := New(TEST_KEY)
 		defer hookbot.Shutdown()
 
-		msgsC1 := hookbot.Add("/unsafe/foo/?recursive")
+		msgsC1 := hookbot.Add("/unsafe/foo/")
 		msgsC2 := hookbot.Add("/unsafe/foo/bar")
 
 		c1, c2 = msgsC1.c, msgsC2.c
@@ -79,7 +79,7 @@ func TestTopicsRecursive(t *testing.T) {
 	}
 }
 
-// Ensure that messages are not delivered recursively if ?recursive is omitted
+// Ensure that messages are not delivered recursively for topics not ending in /.
 func TestTopicsNotRecursive(t *testing.T) {
 
 	var c1, c2 chan Message
@@ -88,7 +88,7 @@ func TestTopicsNotRecursive(t *testing.T) {
 		hookbot := New(TEST_KEY)
 		defer hookbot.Shutdown()
 
-		msgsC1 := hookbot.Add("/unsafe/foo/")
+		msgsC1 := hookbot.Add("/unsafe/foo")
 		msgsC2 := hookbot.Add("/unsafe/foo/bar")
 
 		c1, c2 = msgsC1.c, msgsC2.c
