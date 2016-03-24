@@ -88,11 +88,14 @@ func New(key string) *Hookbot {
 // If it is a POST request, it is publishing, otherwise it is subscribing.
 func (h *Hookbot) BothPubSub(pub, sub http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" {
+		switch r.Method {
+		case "POST":
 			pub.ServeHTTP(w, r)
-			return
+		case "GET":
+			sub.ServeHTTP(w, r)
+		default:
+			http.Error(w, "Not Implemented", http.StatusNotImplemented)
 		}
-		sub.ServeHTTP(w, r)
 	})
 }
 
