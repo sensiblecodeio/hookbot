@@ -1,4 +1,4 @@
-FROM golang:1.6
+FROM golang:1.6.1
 
 COPY ./vendor /go/src/github.com/scraperwiki/hookbot/vendor/
 RUN go install -v github.com/scraperwiki/hookbot/vendor/...
