@@ -296,7 +296,7 @@ func (h *Hookbot) Loop() {
 	}
 }
 
-// Return a new Listener which recevies messages for `topic`.
+// Return a new Listener which receives messages for `topic`.
 func (h *Hookbot) Add(topic string) Listener {
 	ready := make(chan struct{})
 	l := Listener{
