@@ -2,13 +2,13 @@ FROM golang:1.7-alpine
 ENV CGO_ENABLED=0
 RUN go install -v net/http net/http/pprof
 
-COPY ./vendor /go/src/github.com/scraperwiki/hookbot/vendor/
-RUN go install -v github.com/scraperwiki/hookbot/vendor/...
+COPY ./vendor /go/src/github.com/sensiblecodeio/hookbot/vendor/
+RUN go install -v github.com/sensiblecodeio/hookbot/vendor/...
 
-COPY . /go/src/github.com/scraperwiki/hookbot
+COPY . /go/src/github.com/sensiblecodeio/hookbot
 
 RUN go install \
-	-v github.com/scraperwiki/hookbot
+	-v github.com/sensiblecodeio/hookbot
 
 EXPOSE 8080
 
