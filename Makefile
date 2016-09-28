@@ -10,8 +10,8 @@ hookbot.deps:
 
 hookbot: hookbot.deps Dockerfile
 	git submodule update --init
-	docker build -t scraperwiki/hookbot .
-	docker create --name hookbot-tmp scraperwiki/hookbot
+	docker build -t sensiblecodeio/hookbot .
+	docker create --name hookbot-tmp sensiblecodeio/hookbot
 	docker cp hookbot-tmp:/go/bin/hookbot .
 	docker rm hookbot-tmp
 	chmod +x ./hookbot

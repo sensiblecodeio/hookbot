@@ -11,8 +11,8 @@ import (
 
 	"github.com/codegangsta/cli"
 
-	"github.com/scraperwiki/hookbot/pkg/hookbot"
-	"github.com/scraperwiki/hookbot/pkg/router/github"
+	"github.com/sensiblecodeio/hookbot/pkg/hookbot"
+	"github.com/sensiblecodeio/hookbot/pkg/router/github"
 )
 
 func main() {
