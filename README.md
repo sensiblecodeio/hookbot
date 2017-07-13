@@ -57,7 +57,7 @@ $ HOOKBOT_KEY=foo hookbot serve
 
 Release binaries [are hosted on github](https://github.com/sensiblecodeio/hookbot/releases).
 
-If you're a ScraperWiki employee, you can use https://hookbot.scraperwiki.com.
+If you're a SensibleCode employee, you can use https://hookbot.scraperwiki.com.
 
 ## How do I listen to events
 
@@ -109,7 +109,7 @@ https://2e1150434ba1d8c33bce7c82ee08b5d9850342c7@hookbot.scraperwiki.com/pub/foo
 ```
 
 The `HOOKBOT_KEY` should be kept secret and the authentication token is derived
-from it using a [HMAC](https://en.wikipedia.org/w/HMAC).
+from it using a [HMAC](https://en.wikipedia.org/wiki/Hash-based_message_authentication_code).
 
 A token which is valid for a URL ending with a `/` is valid for any URL
 beginning with that prefix up to the `/`. For example a token valid for
