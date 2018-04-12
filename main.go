@@ -116,7 +116,7 @@ func ActionMakeTokens(c *cli.Context) {
 	baseStr := c.String("url-base")
 	u, err := url.ParseRequestURI(baseStr)
 	if err != nil {
-		log.Fatal("Unable to parse url-base %q: %v", baseStr, err)
+		log.Fatalf("Unable to parse url-base %q: %v", baseStr, err)
 	}
 
 	initialScheme := u.Scheme
@@ -140,7 +140,7 @@ func ActionMakeTokens(c *cli.Context) {
 	for _, arg := range c.Args() {
 		argURL, err := url.Parse(arg)
 		if err != nil {
-			log.Fatalln("URL %q doesn't parse: %v", arg, err)
+			log.Fatalf("URL %q doesn't parse: %v", arg, err)
 		}
 
 		mac := hookbot.Sha1HMAC(key, argURL.Path)
