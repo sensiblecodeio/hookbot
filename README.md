@@ -96,6 +96,21 @@ can be seen in the [hanoverd](https://github.com/sensiblecodeio/hanoverd/) proje
 	}
 ```
 
+Accepted Origins
+----------------
+
+By default, hoobot only accepts requests with no `Origin` header, or where the origin host
+matches the host in the URL.
+
+To accept other origins, use the `--origin` flag, as follows:
+
+```
+$ HOOKBOT_KEY=foo hookbot serve --origin http://localhost:4200 --origin https://hookbot.scraperwiki.com
+```
+
+Note that when the origin flag is used, same-host requests or requests with no `Origin` header
+are no longer accepted.
+
 
 Generating tokens
 -----------------

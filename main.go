@@ -48,6 +48,11 @@ func main() {
 					Usage: "address to listen on",
 				},
 				cli.StringSliceFlag{
+					Name:  "origin",
+					Value: &cli.StringSlice{},
+					Usage: "list of accepted origins",
+				},
+				cli.StringSliceFlag{
 					Name:  "router",
 					Value: &cli.StringSlice{},
 					Usage: "list of routers to enable",
@@ -172,6 +177,9 @@ func ActionMakeTokens(c *cli.Context) {
 }
 
 func ActionServe(c *cli.Context) {
+
+	hookbot.ConfigureServeHTTP(c.StringSlice("origin"))
+
 	key := c.GlobalString("key")
 	if key == "<unset>" {
 		log.Fatalln("HOOKBOT_KEY not set")
@@ -189,6 +197,7 @@ func ActionServe(c *cli.Context) {
 
 	log.Println("Listening on", c.String("bind"))
 	err := http.ListenAndServe(c.String("bind"), nil)
+
 	if err != nil {
 		log.Fatal(err)
 	}

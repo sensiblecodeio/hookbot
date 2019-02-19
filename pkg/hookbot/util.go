@@ -7,9 +7,31 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
+var upgrader websocket.Upgrader
+
+func ConfigureServeHTTP(allowedOrigins []string) {
+
+	if len(allowedOrigins) == 0 {
+		upgrader = websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+		}
+	} else {
+		upgrader = websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				for _, o := range r.Header["Origin"] {
+					for _, ao := range allowedOrigins {
+						if o == ao {
+							return true
+						}
+					}
+				}
+				return false
+			},
+		}
+	}
 }
 
 type WebsocketHandlerFunc func(*websocket.Conn, *http.Request)
