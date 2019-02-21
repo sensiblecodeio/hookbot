@@ -47,6 +47,16 @@ func main() {
 					Value: ":8080",
 					Usage: "address to listen on",
 				},
+				cli.StringFlag{
+					Name:  "sslkey, k",
+					Value: "<unset>",
+					Usage: "path to the SSL secret key",
+				},
+				cli.StringFlag{
+					Name:  "sslcrt, c",
+					Value: "<unset>",
+					Usage: "path to the SSL compound certificate",
+				},
 				cli.StringSliceFlag{
 					Name:  "router",
 					Value: &cli.StringSlice{},
@@ -188,7 +198,16 @@ func ActionServe(c *cli.Context) {
 	})
 
 	log.Println("Listening on", c.String("bind"))
-	err := http.ListenAndServe(c.String("bind"), nil)
+
+	sslkey := c.String("sslkey")
+
+	var err error
+
+	if sslkey == "<unset>" {
+		err = http.ListenAndServe(c.String("bind"), nil)
+	} else {
+		err = http.ListenAndServeTLS(c.String("bind"), c.String("sslcrt"), c.String("sslkey"), nil)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -97,6 +97,19 @@ can be seen in the [hanoverd](https://github.com/sensiblecodeio/hanoverd/) proje
 ```
 
 
+TLS/SSL support
+---------------
+
+To allow (and enforce) encrypted connections, provide the paths to your SSL key and
+certificate:
+
+```
+$ HOOKBOT_KEY=foo hookbot serve --sslkey=/path/to/ssl.key --sslcrt=/path/to/ssl.crt
+```
+
+If the certificate is signed by a certificate authority, the certFile should be the
+concatenation of the server's certificate, any intermediates, and the CA's certificate.
+
 Generating tokens
 -----------------
 
