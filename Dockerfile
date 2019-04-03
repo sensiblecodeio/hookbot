@@ -1,14 +1,16 @@
 FROM golang:1.12.1-alpine
-ENV CGO_ENABLED=0
-RUN go install -v net/http net/http/pprof
 
-COPY ./vendor /go/src/github.com/sensiblecodeio/hookbot/vendor/
-RUN go install -v github.com/sensiblecodeio/hookbot/vendor/...
+RUN apk add git
 
-COPY . /go/src/github.com/sensiblecodeio/hookbot
+ENV CGO_ENABLED=0 GO111MODULE=on
 
-RUN go install \
-	-v github.com/sensiblecodeio/hookbot
+WORKDIR /go/src/github.com/sensiblecodeio/hookbot
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN go install -v
 
 EXPOSE 8080
 
