@@ -1,4 +1,4 @@
-FROM golang:1.10-alpine
+FROM golang:1.12.1-alpine
 ENV CGO_ENABLED=0
 RUN go install -v net/http net/http/pprof
 
