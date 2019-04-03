@@ -1,6 +1,6 @@
 all: hookbot
 
-hookbot: Dockerfile
+hookbot: FORCE
 	git submodule update --init
 	docker build -t sensiblecodeio/hookbot .
 	docker create --name hookbot-tmp sensiblecodeio/hookbot
@@ -9,6 +9,6 @@ hookbot: Dockerfile
 	chmod +x ./hookbot
 
 # GNU Make instructions
-.PHONY:
+.PHONY: FORCE
 # Required for hanoverd.deps
 .DELETE_ON_ERROR:
