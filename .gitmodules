@@ -1,6 +1,0 @@
-[submodule "vendor/github.com/codegangsta/cli"]
-	path = vendor/github.com/codegangsta/cli
-	url = https://github.com/codegangsta/cli
-[submodule "vendor/github.com/gorilla/websocket"]
-	path = vendor/github.com/gorilla/websocket
-	url = https://github.com/gorilla/websocket
