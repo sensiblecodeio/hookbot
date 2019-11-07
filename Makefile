@@ -12,5 +12,3 @@ test:
 
 # GNU Make instructions
 .PHONY: test FORCE
-# Required for hanoverd.deps
-.DELETE_ON_ERROR:
