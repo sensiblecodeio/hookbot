@@ -7,7 +7,8 @@ hookbot: FORCE
 	docker rm hookbot-tmp
 	chmod +x ./hookbot
 
+test:
+	go test -v ./...
+
 # GNU Make instructions
-.PHONY: FORCE
-# Required for hanoverd.deps
-.DELETE_ON_ERROR:
+.PHONY: test FORCE
