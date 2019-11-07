@@ -3,7 +3,7 @@ package hookbot
 import (
 	"log"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 )
 
 type Router interface {
