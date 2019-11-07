@@ -9,7 +9,7 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 
 	"github.com/sensiblecodeio/hookbot/pkg/hookbot"
 	"github.com/sensiblecodeio/hookbot/pkg/router/github"
