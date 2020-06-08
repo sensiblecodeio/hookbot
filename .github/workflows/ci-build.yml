@@ -19,10 +19,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Install
-        run: |
-          go get -v .
-
       - name: Run tests
         run: |
           make test
