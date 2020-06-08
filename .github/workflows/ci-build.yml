@@ -26,3 +26,7 @@ jobs:
       - name: Run tests
         run: |
           make test
+
+      - name: Build in Docker
+        run: |
+          make hookbot
