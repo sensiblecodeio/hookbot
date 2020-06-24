@@ -63,7 +63,7 @@ If you're a SensibleCode employee, you can use https://hookbot.scraperwiki.com.
 
 You can listen to events by making a websocket connection to a `/sub/` URL.
 
-This can be done with [`wscat`](https://github.com/pwaller/wscat/releases), for example:
+This can be done with [`wscat`](https://github.com/sensiblecodeio/wscat/releases), for example:
 
 ```
 $ wscat wss://token@hookbot.scraperwiki.com/sub/foo/bar
