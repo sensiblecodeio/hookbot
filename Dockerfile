@@ -2,7 +2,9 @@ FROM golang:1.14.4-alpine
 
 RUN apk add git
 
-ENV CGO_ENABLED=0 GO111MODULE=on
+USER nobody:nogroup
+
+ENV CGO_ENABLED=0 GO111MODULE=on XDG_CACHE_HOME=/tmp/.cache
 
 WORKDIR /go/src/github.com/sensiblecodeio/hookbot
 
@@ -14,5 +16,4 @@ RUN go install -v
 
 EXPOSE 8080
 
-USER nobody:nogroup
 ENTRYPOINT ["hookbot"]
