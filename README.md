@@ -21,7 +21,7 @@ or deploys software when it is updated.
 Webhooks require that the receiver of the hook listens on a port accessible
 to the publisher, and that the publisher must be configured to publish to
 every listener. In a cloud environment this can be inconvenient, as there may be
-many receivers interested in an event, and it may not be desirable to poke holes in a
+many receivers interested in an event, and it may not be desirable to poke holes in
 the firewall for them. In a development environment it may not be easy to listen on
 a public TCP interface.
 
