@@ -12,7 +12,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go install -v
+RUN go install -v -buildvcs=false
 
 EXPOSE 8080
 
