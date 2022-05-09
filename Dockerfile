@@ -1,4 +1,4 @@
-FROM golang:1.16.6-alpine
+FROM golang:1.18.1-alpine
 
 RUN apk add git
 
@@ -12,7 +12,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go install -v
+RUN go install -v -buildvcs=false
 
 EXPOSE 8080
 
